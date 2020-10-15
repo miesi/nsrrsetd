@@ -21,96 +21,102 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package de.mieslinger.nsrrsetd;
+package de.mieslinger.nsrrsetd.background;
 
+import de.mieslinger.nsrrsetd.transfer.QueryIpForZone;
+import de.mieslinger.nsrrsetd.transfer.QueryNsForIP;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.xbill.DNS.AAAARecord;
 import org.xbill.DNS.Cache;
 import org.xbill.DNS.DClass;
 import org.xbill.DNS.Lookup;
-import org.xbill.DNS.NSRecord;
-import org.xbill.DNS.Record;
 import org.xbill.DNS.SimpleResolver;
 import org.xbill.DNS.Type;
 
 /**
- * dig NS $delegation
  *
  * @author mieslingert
  */
-public class DelegationNSSetLookup implements Runnable {
-    
-    private ConcurrentLinkedQueue<Record> queueDelegation;
+public class NSAAAALookup implements Runnable {
+
     private ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup;
-    private ConcurrentLinkedQueue<QueryNsForIP> queueALookup;
+    private ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck;
     private String resolverToWarm;
-    private final Logger logger = LoggerFactory.getLogger(DelegationNSSetLookup.class);
     private boolean keepOnRunning = true;
+    private final Logger logger = LoggerFactory.getLogger(NSAAAALookup.class);
     private Cache c;
     private int timeout;
-    
-    private DelegationNSSetLookup() {
+
+    private NSAAAALookup() {
+
     }
-    
-    public DelegationNSSetLookup(ConcurrentLinkedQueue<Record> queueDelegation,
-            ConcurrentLinkedQueue<QueryNsForIP> queueALookup,
-            ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup,
+
+    public NSAAAALookup(ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup,
+            ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck,
             String resolverToWarm,
             Cache dnsJavaCache,
             int timeout) {
-        this.queueDelegation = queueDelegation;
-        this.queueALookup = queueALookup;
         this.queueAAAALookup = queueAAAALookup;
+        this.queueDNSCheck = queueDNSCheck;
         this.resolverToWarm = resolverToWarm;
         this.c = dnsJavaCache;
         this.timeout = timeout;
     }
-    
+
+    @Override
     public void run() {
         while (keepOnRunning) {
             try {
-                Record delegation = queueDelegation.poll();
-                if (delegation != null) {
-                    doLookup(delegation);
+                QueryNsForIP n = queueAAAALookup.poll();
+                if (n != null) {
+                    doLookup(n);
                 } else {
                     Thread.sleep(5000);
                 }
             } catch (Exception e) {
-                logger.warn("Delegation NSSet Lookup Exception: ", e);
+                logger.warn("AAAA Lookup Exception: ", e);
             }
         }
+
     }
-    
-    private void doLookup(Record delegation) throws Exception {
-        Lookup l = new Lookup(delegation.getName(), Type.NS, DClass.IN);
-        l.setCache(c);
+
+    private void doLookup(QueryNsForIP n) throws Exception {
+        logger.debug("Query AAAA for {} of tld {}", n.getServerName(), n.getTld());
+        Lookup la = new Lookup(n.getServerName(), Type.AAAA, DClass.IN);
+        la.setCache(c);
         SimpleResolver r = new SimpleResolver(resolverToWarm);
         r.setTimeout(Duration.ofSeconds(timeout));
-        l.setResolver(r);
+        la.setResolver(r);
         long begin = System.currentTimeMillis();
-        l.run();
+        la.run();
         long end = System.currentTimeMillis();
         long latency = end - begin;
-        logger.debug("querying NS of {}", delegation.getName());
-        if (l.getResult() == Lookup.SUCCESSFUL) {
-            // dig A and AAAA for every NS record returned
-            logger.debug("query for {} took {}ms", delegation.getName().toString(true), latency);
-            Record[] answers = l.getAnswers();
-            for (int j = 0; j < answers.length; j++) {
-                if (answers[j].getType() == Type.NS) {
-                    NSRecord ns = (NSRecord) answers[j];
-                    QueryNsForIP q = new QueryNsForIP(ns.getTarget(), delegation.getName());
-                    queueALookup.add(q);
-                    //queueAAAALookup.add(q);
-                    // TODO: check length and sleep?                 
+        switch (la.getResult()) {
+            case Lookup.SUCCESSFUL:
+                logger.debug("Query for AAAA of {} took {}ms", n.getServerName().toString(true), latency);
+                // Store ips 
+                for (int i = 0; i < la.getAnswers().length; i++) {
+                    AAAARecord a = (AAAARecord) la.getAnswers()[0];
+                    QueryIpForZone q = new QueryIpForZone(a.getAddress(), n.getTld(), true);
+                    queueDNSCheck.add(q);
+                    logger.debug("queued direct query to {} for {}", a.getAddress().toString(), n.getTld().toString(true));
                 }
-            }
-        } else {
-            // Lookup unsuccessful
-            logger.warn("query NS for tld delegation {} failed!", delegation);
+                break;
+            case Lookup.HOST_NOT_FOUND:
+                // NXDOMAIN
+                logger.debug("HOST_NOT_FOUND AAAA record for {}", n);
+                break;
+            case Lookup.TYPE_NOT_FOUND:
+                // empty NOERROR reply
+                logger.debug("TYPE_NOT_FOUND AAAA record for {}", n);
+                break;
+            default:
+                logger.warn("query AAAA for NS {} failed!", n);
+                break;
         }
     }
-    
+
 }

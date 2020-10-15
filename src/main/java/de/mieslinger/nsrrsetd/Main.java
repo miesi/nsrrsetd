@@ -23,13 +23,25 @@
  */
 package de.mieslinger.nsrrsetd;
 
+import de.mieslinger.nsrrsetd.store.LatencyStore;
+import de.mieslinger.nsrrsetd.background.DelegationNSSetLookup;
+import de.mieslinger.nsrrsetd.background.LookupZone;
+import de.mieslinger.nsrrsetd.background.NSAAAALookup;
+import de.mieslinger.nsrrsetd.background.NSALookup;
+import de.mieslinger.nsrrsetd.servlets.ServletGetDelegatingNSSet;
+import de.mieslinger.nsrrsetd.servlets.ServletStatistics;
+import de.mieslinger.nsrrsetd.transfer.QueryIpForZone;
+import de.mieslinger.nsrrsetd.transfer.QueryNsForIP;
 import com.sampullara.cli.Args;
 import com.sampullara.cli.Argument;
+import de.mieslinger.nsrrsetd.servlets.ServletRoot;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.handler.ContextHandlerCollection;
+import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,19 +61,19 @@ public class Main {
     private static String axfrSource = "iad.xfr.dns.icann.org";
 
     @Argument(alias = "r", description = "Resolver to query")
-    private static String resolverToWarm = "212.227.123.16";
+    private static String resolverToWarm = "10.2.215.21";
 
     @Argument(alias = "nt", description = "Number of Threads for NS lookups")
-    private static int numThreadsNSLookup = 5;
+    private static int numThreadsNSLookup = 2;
 
     @Argument(alias = "at", description = "Number of Threads for AAAA lookups")
-    private static int numThreadsALookup = 25;
+    private static int numThreadsALookup = 2;
 
     @Argument(alias = "aaaat", description = "Number of Threads for AAAA lookups")
-    private static int numThreadsAAAALookup = 25;
+    private static int numThreadsAAAALookup = 2;
 
     @Argument(alias = "dnst", description = "Number of Threads for DNS Check")
-    private static int numThreadsDNSCheck = 25;
+    private static int numThreadsDNSCheck = 50;
 
     @Argument(alias = "t", description = "resolver timeout (seconds)")
     private static int timeout = 4;
@@ -70,7 +82,7 @@ public class Main {
     private static int rootZoneMaxAge = 86400;
 
     @Argument(alias = "bc", description = "background checking of NS/A/AAAA every n seconds")
-    private static int backgroundCheck = 60;
+    private static int backgroundCheck = 600;
 
     @Argument(alias = "d", description = "enable debug")
     private static boolean debug = false;
@@ -81,18 +93,18 @@ public class Main {
     @Argument(alias = "hp", description = "http port (default 8989)")
     private static int httpPort = 8989;
 
-    protected static final ConcurrentLinkedQueue<Record> queueDelegation = new ConcurrentLinkedQueue<>();
-    protected static final ConcurrentLinkedQueue<QueryNsForIP> queueALookup = new ConcurrentLinkedQueue<>();
-    protected static final ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup = new ConcurrentLinkedQueue<>();
-    protected static final ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck = new ConcurrentLinkedQueue<>();
+    public static final ConcurrentLinkedQueue<Record> queueDelegation = new ConcurrentLinkedQueue<>();
+    public static final ConcurrentLinkedQueue<QueryNsForIP> queueALookup = new ConcurrentLinkedQueue<>();
+    public static final ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup = new ConcurrentLinkedQueue<>();
+    public static final ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck = new ConcurrentLinkedQueue<>();
 
     private static Name lastSeenName = null;
     private static List records = null;
     private static Logger logger = LoggerFactory.getLogger(Main.class);
     private static final String jdbcUrl = "jdbc:h2:mem:myDB;DB_CLOSE_DELAY=-1";
-    protected static Connection dbConn;
+    public static Connection dbConn;
     private static LatencyStore s;
-    private static Cache dnsJavaCache;
+    public static Cache dnsJavaCache;
     private static long lastTransfer;
     private static Server jetty;
 
@@ -214,26 +226,20 @@ public class Main {
 
     private static void startJetty() {
         try {
-            // Note that if you set this to port 0 then a randomly available port
-            // will be assigned that you can either look in the logs for the port,
-            // or programmatically obtain it for use in test cases.
+
             jetty = new Server(httpPort);
 
-            // The ServletHandler is a dead simple way to create a context handler
-            // that is backed by an instance of a Servlet.
-            // This handler then needs to be registered with the Server object.
-            ServletHandler handler = new ServletHandler();
-            jetty.setHandler(handler);
+            ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
+            context.setContextPath("/");
+            //context.setBaseResource(baseResource);
+            jetty.setHandler(context);
 
-            // Passing in the class for the Servlet allows jetty to instantiate an
-            // instance of that Servlet and mount it on a given context path.
-            // IMPORTANT:
-            // This is a raw Servlet, not a Servlet that has been configured
-            // through a web.xml @WebServlet annotation, or anything similar.
-            handler.addServletWithMapping(StatisticsServlet.class, "/*");
-            
+            context.addServlet(ServletRoot.class, "/");
+            context.addServlet(ServletStatistics.class, "/statistics");
+            context.addServlet(ServletGetDelegatingNSSet.class, "/getDelegatingNSSet/*");
+
             jetty.start();
-            
+
         } catch (Exception e) {
             logger.warn("Jetty not started: {}", e.toString());
         }

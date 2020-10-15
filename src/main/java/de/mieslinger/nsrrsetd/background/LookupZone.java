@@ -21,8 +21,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package de.mieslinger.nsrrsetd;
+package de.mieslinger.nsrrsetd.background;
 
+import de.mieslinger.nsrrsetd.store.LatencyStore;
+import de.mieslinger.nsrrsetd.transfer.QueryIpForZone;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.slf4j.Logger;

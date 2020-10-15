@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package de.mieslinger.nsrrsetd;
+package de.mieslinger.nsrrsetd.store;
 
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -66,11 +66,12 @@ public class LatencyStore {
 
     public void storeLatency(Name tld, InetAddress ip, long latency, long lastUpdated) {
         try {
+            // FIXME: Delete old entries (older than 3x reRun?)
             PreparedStatement st = cn.prepareStatement("merge into serverLatency "
                     + "key(tld,ip) "
                     + "values (?,?,?,?,?);");
             st.setString(1, tld.toString(true));
-            st.setString(2, ip.toString());
+            st.setString(2, ip.getHostAddress());
             if (ip instanceof Inet6Address) {
                 st.setInt(3, 6);
             } else {
@@ -79,7 +80,7 @@ public class LatencyStore {
             st.setLong(4, latency);
             st.setLong(5, lastUpdated);
             st.execute();
-            logger.debug("inserted {} {} {}ms", tld.toString(true), ip.toString(), latency);
+            logger.debug("inserted {} {} {}ms", tld.toString(true), ip.getHostAddress(), latency);
         } catch (Exception e) {
             logger.warn("merge failed: {}", e.toString());
         }

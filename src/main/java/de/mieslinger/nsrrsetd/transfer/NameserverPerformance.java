@@ -21,45 +21,42 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package de.mieslinger.nsrrsetd;
+package de.mieslinger.nsrrsetd.transfer;
 
 import java.net.InetAddress;
-import org.xbill.DNS.Name;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author mieslingert
  */
-public class QueryIpForZone {
+public class NameserverPerformance {
 
     private InetAddress ip;
-    private Name zone;
-    private boolean record = false;
+    private long latency;
+    private long lastUpdated;
+    private final Logger logger = LoggerFactory.getLogger(NameserverPerformance.class);
 
-    private QueryIpForZone() {
+    private NameserverPerformance() {
     }
 
-    public QueryIpForZone(InetAddress ip, Name zone) {
+    public NameserverPerformance(InetAddress ip, long latency, long lastUpdated) {
         this.ip = ip;
-        this.zone = zone;
-    }
-
-    public QueryIpForZone(InetAddress ip, Name zone, boolean recordLatency) {
-        this.ip = ip;
-        this.zone = zone;
-        this.record = recordLatency;
+        this.latency = latency;
+        this.lastUpdated = lastUpdated;
     }
 
     public InetAddress getIp() {
         return ip;
     }
 
-    public Name getZone() {
-        return zone;
+    public long getLatency() {
+        return latency;
     }
 
-    public boolean getRecordLatency() {
-        return record;
+    public long getLastUpdated() {
+        return lastUpdated;
     }
 
 }

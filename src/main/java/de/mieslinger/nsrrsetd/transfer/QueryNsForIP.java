@@ -21,42 +21,33 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package de.mieslinger.nsrrsetd;
+package de.mieslinger.nsrrsetd.transfer;
 
-import java.net.InetAddress;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.xbill.DNS.Name;
 
 /**
  *
  * @author mieslingert
  */
-public class NameserverPerformance {
+public class QueryNsForIP {
 
-    private InetAddress ip;
-    private long latency;
-    private long lastUpdated;
-    private final Logger logger = LoggerFactory.getLogger(NameserverPerformance.class);
+    private Name serverName;
+    private Name tld;
 
-    private NameserverPerformance() {
+    private QueryNsForIP() {
     }
 
-    public NameserverPerformance(InetAddress ip, long latency, long lastUpdated) {
-        this.ip = ip;
-        this.latency = latency;
-        this.lastUpdated = lastUpdated;
+    public QueryNsForIP(Name serverName, Name tld) {
+        this.serverName = serverName;
+        this.tld = tld;
     }
 
-    public InetAddress getIp() {
-        return ip;
+    public Name getServerName() {
+        return serverName;
     }
 
-    public long getLatency() {
-        return latency;
-    }
-
-    public long getLastUpdated() {
-        return lastUpdated;
+    public Name getTld() {
+        return tld;
     }
 
 }
