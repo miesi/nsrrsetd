@@ -23,6 +23,7 @@
  */
 package de.mieslinger.nsrrsetd.background;
 
+import de.mieslinger.nsrrsetd.Main;
 import de.mieslinger.nsrrsetd.transfer.QueryIpForZone;
 import de.mieslinger.nsrrsetd.transfer.QueryNsForIP;
 import java.time.Duration;
@@ -49,6 +50,7 @@ public class NSALookup implements Runnable {
     private final Logger logger = LoggerFactory.getLogger(NSALookup.class);
     private Cache c;
     private int timeout;
+    private boolean doQueryTLDserver = true;
 
     private NSALookup() {
 
@@ -57,13 +59,14 @@ public class NSALookup implements Runnable {
     public NSALookup(ConcurrentLinkedQueue<QueryNsForIP> queueALookup,
             ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck,
             String resolverToWarm,
-            Cache dnsJavaCache,
             int timeout) {
         this.queueALookup = queueALookup;
         this.queueDNSCheck = queueDNSCheck;
         this.resolverToWarm = resolverToWarm;
-        this.c = dnsJavaCache;
+        this.c = new Cache();
+        c.setMaxEntries(0);
         this.timeout = timeout;
+        this.doQueryTLDserver = Main.doQueryTLDserver();
     }
 
     @Override
@@ -97,12 +100,13 @@ public class NSALookup implements Runnable {
         switch (la.getResult()) {
             case Lookup.SUCCESSFUL:
                 logger.debug("Query for AAAA of {} took {}ms", n.getServerName().toString(true), latency);
-                // Store ips 
-                for (int i = 0; i < la.getAnswers().length; i++) {
-                    ARecord a = (ARecord) la.getAnswers()[0];
-                    QueryIpForZone q = new QueryIpForZone(a.getAddress(), n.getTld(), true);
-                    queueDNSCheck.add(q);
-                    logger.debug("queued direct query to {} for {}", a.getAddress(), n.getTld().toString(true));
+                if (doQueryTLDserver) {
+                    for (int i = 0; i < la.getAnswers().length; i++) {
+                        ARecord a = (ARecord) la.getAnswers()[0];
+                        QueryIpForZone q = new QueryIpForZone(a.getAddress(), n.getTld(), true);
+                        queueDNSCheck.add(q);
+                        logger.debug("queued direct query to {} for {}", a.getAddress(), n.getTld().toString(true));
+                    }
                 }
                 break;
             case Lookup.HOST_NOT_FOUND:

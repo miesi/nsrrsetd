@@ -39,8 +39,7 @@ import javax.servlet.http.HttpServletResponse;
  *
  * @author mieslingert
  */
-@SuppressWarnings("serial")
-public class ServletStatistics extends HttpServlet {
+public class ServletStatus extends HttpServlet {
 
     /**
      * Processes requests for both HTTP <code>GET</code> and <code>POST</code>
@@ -56,42 +55,38 @@ public class ServletStatistics extends HttpServlet {
 
         PrintWriter out = response.getWriter();
         Connection c = Main.getDbConn();
-
         try {
             long startTs = System.currentTimeMillis();
 
-            response.setContentType("text/html;charset=UTF-8");
+            response.setContentType("text/plain;charset=UTF-8");
 
-            out.println("<html>");
-            out.println("<head>");
-            out.println("<title>Statistics Servlet");
-            out.println("</title>");
-            out.println("<body>");
-            out.println("<h1>Queues</h1>");
-            out.println("<table>");
-            out.println("<tr><td>queueDelegation</td><td>" + Main.getQDSize() + "</td></tr>");
-            out.println("<tr><td>queueALookup</td><td>" + Main.getQASize() + "</td></tr>");
-            out.println("<tr><td>queueAAAALookup</td><td>" + Main.getQAAAASize() + "</td></tr>");
-            out.println("<tr><td>queueDNSCheck</td><td>" + Main.getQDNSSize() + "</td></tr>");
-            out.println("</table>");
-            out.println("<h1>Cache content</h1>");
-            out.println("<table>");
-            PreparedStatement st = c.prepareStatement("select tld, ip, latency from serverLatency order by tld, latency");
+            if (Main.tldCacheComplete()) {
+                out.println("Status: OK");
+            } else {
+                out.println("Status: Warming Up");
+            }
+
+            out.println("queueDelegation: " + Main.getQDSize());
+            out.println("queueALookup: " + Main.getQASize());
+            out.println("queueAAAALookup: " + Main.getQAAAASize());
+            out.println("queueDNSCheck: " + Main.getQDNSSize());
+            PreparedStatement st = c.prepareStatement("select count(*) from serverLatency");
             ResultSet rs = st.executeQuery();
             while (rs.next()) {
-                out.format("<tr><td>%s</td><td>%s</td><td>%d</td></tr>\n", rs.getString(1), rs.getString(2), rs.getInt(3));
+                out.format("%s: %d\n", "Cache size", rs.getInt(1));
             }
             rs.close();
             st.close();
-            out.println("</table>");
-            out.println("<hr>");
-            out.println("Session und Connection Information:<br>");
+            st = c.prepareStatement("select min(lastUpdated) from serverLatency");
+            rs = st.executeQuery();
+            while (rs.next()) {
+                out.format("%s: %d\n", "Oldest Cache Entry", rs.getLong(1));
+            }
+            rs.close();
+            st.close();
             out.println("RemoteAddress: " + request.getRemoteAddr());
-            out.println("<hr>");
-            out.println("Generated at: " + new Date().toString() + "<br>");
-            out.println("Total generation time: " + (System.currentTimeMillis() - startTs) + "ms<br>");
-            out.println("</body>");
-            out.println("</html>");
+            out.println("Generated at: " + new Date().toString());
+            out.println("Total generation time: " + (System.currentTimeMillis() - startTs) + "ms");
         } catch (Exception e) {
             out.println(e.toString());
             e.printStackTrace();

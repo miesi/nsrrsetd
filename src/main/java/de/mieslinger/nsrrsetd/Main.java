@@ -35,17 +35,15 @@ import de.mieslinger.nsrrsetd.transfer.QueryNsForIP;
 import com.sampullara.cli.Args;
 import com.sampullara.cli.Argument;
 import de.mieslinger.nsrrsetd.servlets.ServletRoot;
+import de.mieslinger.nsrrsetd.servlets.ServletStatus;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlet.ServletHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.xbill.DNS.Cache;
 import org.xbill.DNS.Name;
 import org.xbill.DNS.Record;
 import org.xbill.DNS.Type;
@@ -63,50 +61,53 @@ public class Main {
     @Argument(alias = "r", description = "Resolver to query")
     private static String resolverToWarm = "10.2.215.21";
 
-    @Argument(alias = "nt", description = "Number of Threads for NS lookups")
-    private static int numThreadsNSLookup = 2;
+    @Argument(alias = "nt", description = "Number of Threads for NS lookups (6 by default)")
+    private static int numThreadsNSLookup = 12;
 
-    @Argument(alias = "at", description = "Number of Threads for AAAA lookups")
-    private static int numThreadsALookup = 2;
+    @Argument(alias = "at", description = "Number of Threads for A lookups (12 by default)")
+    private static int numThreadsALookup = 50;
 
-    @Argument(alias = "aaaat", description = "Number of Threads for AAAA lookups")
-    private static int numThreadsAAAALookup = 2;
+    @Argument(alias = "aaaat", description = "Number of Threads for AAAA lookups (12 by default, 0 for disable)")
+    private static int numThreadsAAAALookup = 50;
 
-    @Argument(alias = "dnst", description = "Number of Threads for DNS Check")
-    private static int numThreadsDNSCheck = 50;
+    @Argument(alias = "dnst", description = "Number of Threads for DNS Check (50 default, 0 for disable))")
+    private static int numThreadsDNSCheck = 100;
 
-    @Argument(alias = "t", description = "resolver timeout (seconds)")
+    @Argument(alias = "t", description = "resolver timeout (4 seconds default)")
     private static int timeout = 4;
 
-    @Argument(alias = "a", description = "retransfer root zone after n seconds")
+    @Argument(alias = "a", description = "retransfer root zone after n seconds (86400 default)")
     private static int rootZoneMaxAge = 86400;
 
-    @Argument(alias = "bc", description = "background checking of NS/A/AAAA every n seconds")
-    private static int backgroundCheck = 600;
+    @Argument(alias = "bc", description = "background checking of NS/A/AAAA every n seconds (1200s default)")
+    private static int backgroundCheck = 1200;
 
-    @Argument(alias = "d", description = "enable debug")
-    private static boolean debug = false;
-
+    /* somehow set -Dorg.slf4j.simpleLogger.defaultLogLevel=debug with this
+     * @Argument(alias = "d", description = "enable debug")
+     * private static boolean debug = false;
+     */
     @Argument(alias = "he", description = "http enabled (default true)")
     private static boolean httpEnabled = true;
 
     @Argument(alias = "hp", description = "http port (default 8989)")
     private static int httpPort = 8989;
 
-    public static final ConcurrentLinkedQueue<Record> queueDelegation = new ConcurrentLinkedQueue<>();
-    public static final ConcurrentLinkedQueue<QueryNsForIP> queueALookup = new ConcurrentLinkedQueue<>();
-    public static final ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup = new ConcurrentLinkedQueue<>();
-    public static final ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck = new ConcurrentLinkedQueue<>();
+    private static final ConcurrentLinkedQueue<Record> queueDelegation = new ConcurrentLinkedQueue<>();
+    private static final ConcurrentLinkedQueue<QueryNsForIP> queueALookup = new ConcurrentLinkedQueue<>();
+    private static final ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup = new ConcurrentLinkedQueue<>();
+    private static final ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck = new ConcurrentLinkedQueue<>();
 
     private static Name lastSeenName = null;
     private static List records = null;
     private static Logger logger = LoggerFactory.getLogger(Main.class);
     private static final String jdbcUrl = "jdbc:h2:mem:myDB;DB_CLOSE_DELAY=-1";
-    public static Connection dbConn;
+    private static Connection dbConn;
     private static LatencyStore s;
-    public static Cache dnsJavaCache;
     private static long lastTransfer;
     private static Server jetty;
+    private static boolean doAAAAlookup = true;
+    private static boolean doQueryTLDserver = true;
+    private static boolean tldCacheComplete = false;
 
     /**
      * @param args the command line arguments
@@ -117,16 +118,23 @@ public class Main {
         //}
         List<String> unparsed = Args.parseOrExit(Main.class, args);
 
-        setupDnsJava();
+        if (numThreadsAAAALookup <= 0) {
+            doAAAAlookup = false;
+        }
+        if (numThreadsDNSCheck <= 0) {
+            doQueryTLDserver = false;
+        }
 
         setupDB();
 
         setupWorkerThreads();
 
         transferRootZone();
+
         if (httpEnabled) {
             startJetty();
         }
+
         while (true) {
             for (int i = 0; i < records.size(); i++) {
                 Record r = (Record) records.get(i);
@@ -139,6 +147,22 @@ public class Main {
                     }
                 }
             }
+
+            // Shortcut to do only .com and .de
+            /* 
+             * Record r = null;
+             * try {
+             *   r = new NSRecord(new Name("com."), DClass.IN, 600, new Name("localhost."));
+             *   queueDelegation.add(r);
+             *   r = new NSRecord(new Name("de."), DClass.IN, 600, new Name("localhost."));
+             *   queueDelegation.add(r);
+             * } catch (Exception e) {
+             *   logger.warn("Exception while adding only debug tlds {}", e.toString());
+             *  }
+             */
+            //END Shortcut
+            
+            
             while (queueALookup.size() > 5 || queueDelegation.size() > 5 || queueDNSCheck.size() > 1) {
                 try {
                     logger.info("delegation queue {}, A queue {}, AAAA queue {}, Check queue {}",
@@ -151,6 +175,8 @@ public class Main {
                     logger.warn("sleep interrupted: {}", e.getMessage());
                 }
             }
+
+            tldCacheComplete = true;
 
             if (lastTransfer + rootZoneMaxAge < System.currentTimeMillis()) {
                 logger.info("retransfering outdated root zone");
@@ -184,25 +210,25 @@ public class Main {
 
     private static void setupWorkerThreads() {
         for (int i = 0; i < numThreadsNSLookup; i++) {
-            Thread tNSLookup = new Thread(new DelegationNSSetLookup(queueDelegation, queueALookup, queueAAAALookup, resolverToWarm, dnsJavaCache, timeout));
+            Thread tNSLookup = new Thread(new DelegationNSSetLookup(queueDelegation, queueALookup, queueAAAALookup, resolverToWarm, timeout));
             tNSLookup.setDaemon(true);
             tNSLookup.setName("DelegationNSSetLookup-" + i);
             tNSLookup.start();
         }
         for (int i = 0; i < numThreadsALookup; i++) {
-            Thread tNSLookup = new Thread(new NSALookup(queueALookup, queueDNSCheck, resolverToWarm, dnsJavaCache, timeout));
+            Thread tNSLookup = new Thread(new NSALookup(queueALookup, queueDNSCheck, resolverToWarm, timeout));
             tNSLookup.setDaemon(true);
             tNSLookup.setName("NSALookup-" + i);
             tNSLookup.start();
         }
         for (int i = 0; i < numThreadsAAAALookup; i++) {
-            Thread tNSLookup = new Thread(new NSAAAALookup(queueAAAALookup, queueDNSCheck, resolverToWarm, dnsJavaCache, timeout));
+            Thread tNSLookup = new Thread(new NSAAAALookup(queueAAAALookup, queueDNSCheck, resolverToWarm, timeout));
             tNSLookup.setDaemon(true);
             tNSLookup.setName("NSAAAALookup-" + i);
             tNSLookup.start();
         }
         for (int i = 0; i < numThreadsDNSCheck; i++) {
-            Thread tNSLookup = new Thread(new LookupZone(queueDNSCheck, s, dnsJavaCache));
+            Thread tNSLookup = new Thread(new LookupZone(queueDNSCheck, s));
             tNSLookup.setDaemon(true);
             tNSLookup.setName("DNSCheck-" + i);
             tNSLookup.start();
@@ -219,11 +245,6 @@ public class Main {
         }
     }
 
-    private static void setupDnsJava() {
-        dnsJavaCache = new Cache();
-        dnsJavaCache.setMaxEntries(0);
-    }
-
     private static void startJetty() {
         try {
 
@@ -235,6 +256,7 @@ public class Main {
             jetty.setHandler(context);
 
             context.addServlet(ServletRoot.class, "/");
+            context.addServlet(ServletStatus.class, "/status");
             context.addServlet(ServletStatistics.class, "/statistics");
             context.addServlet(ServletGetDelegatingNSSet.class, "/getDelegatingNSSet/*");
 
@@ -243,5 +265,53 @@ public class Main {
         } catch (Exception e) {
             logger.warn("Jetty not started: {}", e.toString());
         }
+    }
+
+    public static int getNumThreadsNSLookup() {
+        return numThreadsNSLookup;
+    }
+
+    public static int getNumThreadsALookup() {
+        return numThreadsALookup;
+    }
+
+    public static int getNumThreadsAAAALookup() {
+        return numThreadsAAAALookup;
+    }
+
+    public static int getNumThreadsDNSCheck() {
+        return numThreadsDNSCheck;
+    }
+
+    public static int getQDSize() {
+        return queueDelegation.size();
+    }
+
+    public static int getQASize() {
+        return queueALookup.size();
+    }
+
+    public static int getQAAAASize() {
+        return queueAAAALookup.size();
+    }
+
+    public static int getQDNSSize() {
+        return queueDNSCheck.size();
+    }
+
+    public static boolean doAAAAlookup() {
+        return doAAAAlookup;
+    }
+
+    public static boolean doQueryTLDserver() {
+        return doQueryTLDserver;
+    }
+
+    public static Connection getDbConn() {
+        return dbConn;
+    }
+
+    public static boolean tldCacheComplete() {
+        return tldCacheComplete;
     }
 }

@@ -52,11 +52,11 @@ public class LookupZone implements Runnable {
     }
 
     public LookupZone(ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck,
-            LatencyStore s,
-            Cache dnsJavaCache) {
+            LatencyStore s) {
         this.queueDNSCheck = queueDNSCheck;
         this.s = s;
-        this.c = dnsJavaCache;
+        this.c = new Cache();
+        c.setMaxEntries(0);
     }
 
     @Override
@@ -86,9 +86,14 @@ public class LookupZone implements Runnable {
         la.run();
         long end = System.currentTimeMillis();
         long latency = end - begin;
-        logger.debug("Query for NS Records of zone {} from server {} took {}ms", n.getZone(), n.getIp(), latency);
-        if (n.getRecordLatency()) {
-            s.storeLatency(n.getZone(), n.getIp(), latency, end);
+        switch (la.getResult()) {
+            case Lookup.SUCCESSFUL:
+                logger.debug("Query for NS Records of zone {} from server {} took {}ms", n.getZone(), n.getIp(), latency);
+                s.storeLatency(n.getZone(), n.getIp(), latency, end);
+                break;
+            default:
+                logger.info("Query for NS Records of zone {} from server {} timed out", n.getZone(), n.getIp());
+                break;
         }
     }
 }

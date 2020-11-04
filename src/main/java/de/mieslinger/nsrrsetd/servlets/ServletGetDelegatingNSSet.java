@@ -23,24 +23,32 @@
  */
 package de.mieslinger.nsrrsetd.servlets;
 
+import com.google.gson.Gson;
+import de.mieslinger.nsrrsetd.Main;
+import de.mieslinger.nsrrsetd.transfer.QueryResult;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.PrintWriter;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.Duration;
 import java.util.Date;
+import java.util.Map;
+import java.util.TreeMap;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.xbill.DNS.Credibility;
+import org.xbill.DNS.Cache;
 import org.xbill.DNS.DClass;
-import org.xbill.DNS.Lookup;
-import org.xbill.DNS.NSRecord;
+import org.xbill.DNS.Message;
 import org.xbill.DNS.Name;
+import org.xbill.DNS.Rcode;
 import org.xbill.DNS.Record;
+import org.xbill.DNS.SetResponse;
 import org.xbill.DNS.SimpleResolver;
 import org.xbill.DNS.Type;
 
@@ -63,108 +71,190 @@ public class ServletGetDelegatingNSSet extends HttpServlet {
 
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
+        long startTs = System.currentTimeMillis();
 
         PrintWriter out = response.getWriter();
+        Connection c = Main.getDbConn();
+        String bestIP = null;
+        QueryResult qr = new QueryResult();
+        boolean debug = true;
 
         try {
-            long startTs = System.currentTimeMillis();
-
-            response.setContentType("text/html;charset=UTF-8");
-
-            out.println("<html>");
-            out.println("<head>");
-            out.println("<title>Servlet Delegating NS RRSet");
-            out.println("</title>");
-            out.println("<body>");
+            String strDebug = request.getParameter("debug");
+            if (strDebug == null) {
+                debug = false;
+            }
 
             String zoneStr = request.getPathInfo().substring(1);
-            out.println("request.getPathInfo(): " + zoneStr + "<br>");
+            logger.debug("zoneStr: {}", zoneStr);
 
             Name zone = new Name(zoneStr);
+            if (!zone.isAbsolute()) {
+                zone = new Name(zoneStr + ".");
+            }
 
-            String[] labels = zoneStr.split("\\.");
-            String tld = labels[labels.length - 1];
+            logger.debug("zone: {}", zone);
 
-            out.println("<h1>Cache content for " + tld + "</h1>");
-            out.println("<table>");
+            int numLabels = zone.labels();
+            logger.debug("numLabels: {}", numLabels);
 
-            int i = 1;
-            String bestIP = null;
+            /*for (int i = 0; i <= numLabels; i++) {
+                logger.debug("label({}): {}", i, zone.getLabelString(i));
+            }*/
+            String tld = zone.getLabelString(numLabels - 2);
 
-            PreparedStatement st = de.mieslinger.nsrrsetd.Main.dbConn.prepareStatement("select tld, ip, latency"
+            logger.debug("TLD: {}", tld);
+
+            TreeMap<Long, String[]> servers = new TreeMap<Long, String[]>();
+
+            PreparedStatement st = c.prepareStatement("select tld, ip, latency"
                     + " from serverLatency"
                     + " where tld = ?"
-                    + " order by tld, latency");
+                    + " order by latency");
             st.setString(1, tld);
             ResultSet rs = st.executeQuery();
+            int i = 1;
             while (rs.next()) {
                 if (i == 1) {
                     bestIP = rs.getString(2);
+                    qr.setQueriedServer(bestIP);
                 }
-                out.format("<tr><td>%s</td><td>%s</td><td>%d</td></tr>\n", rs.getString(1), rs.getString(2), rs.getInt(3));
+                String[] server = new String[3];
+                server[0] = rs.getString(1);
+                server[1] = rs.getString(2);
+                Long l = rs.getLong(3);
+                server[2] = l.toString();
+                servers.put(l, server);
                 i++;
             }
             rs.close();
             st.close();
-            out.println("</table>");
-
-            // check bestIP not null
-            out.println("<h1>Delegating NS RRSet for " + zone.toString(true) + "</h1>");
-            out.format("Query NS Records for zone %s from server %s<br>", zone.toString(true), bestIP);
-            logger.debug("Query NS Records for zone {} from server {}", zone.toString(true), bestIP);
-
-            Lookup la = new Lookup(zone.toString(true), Type.NS, DClass.IN);
-            la.setCache(de.mieslinger.nsrrsetd.Main.dnsJavaCache);
-            la.setSearchPath(".");
-            la.setCredibility(Credibility.NONAUTH_AUTHORITY);
+            logger.debug("BestIP: {}", bestIP);
 
             SimpleResolver r = new SimpleResolver(bestIP);
             r.setTimeout(Duration.ofSeconds(20));
 
-            la.setResolver(r);
+            int type = Type.NS;
 
+            Record question = Record.newRecord(zone, type, DClass.IN);
+            Message query = Message.newQuery(question);
+            Message dnsResponse;
             long begin = System.currentTimeMillis();
-            Record[] runResults = la.run();
+
+            boolean timedout = false;
+            boolean networkerror = false;
+            boolean badresponse = false;
+            String badresponse_error;
+            SetResponse sr;
+
+            try {
+                dnsResponse = r.send(query);
+            } catch (Exception e) {
+                logger.debug(
+                        "Lookup for {}/{}, id={} failed using server {}",
+                        zone,
+                        Type.string(query.getQuestion().getType()),
+                        query.getHeader().getID(),
+                        r,
+                        e);
+
+                // A network error occurred.  Press on.
+                if (e instanceof InterruptedIOException) {
+                    timedout = true;
+                    qr.setStatus("Error");
+                    qr.setDiagnostics("Timed Out");
+
+                } else {
+                    networkerror = true;
+                    qr.setStatus("Error");
+                    qr.setDiagnostics("Network Error");
+
+                }
+                return;
+            }
             long end = System.currentTimeMillis();
             long latency = end - begin;
+            qr.setQueryTime(latency);
 
-            out.println("DEBUG: runResults.length " + runResults.length + " <br>");
-            for (i = 0; i < runResults.length; i++) {
-                out.println("DEBUG: runResult " + i + " name: " + runResults[i].getName() + " rdatastring: " + runResults[i].rdataToString() + " <br>");
+            int rcode = dnsResponse.getHeader().getRcode();
+            if (rcode != Rcode.NOERROR && rcode != Rcode.NXDOMAIN) {
+                // The server we contacted is broken or otherwise unhelpful.
+                // Press on.
+                badresponse = true;
+                badresponse_error = Rcode.string(rcode);
+
+                qr.setStatus("Error");
+                qr.setDiagnostics(Rcode.string(rcode));
+            } else {
+                qr.setStatus(Rcode.string(rcode));
             }
 
-            switch (la.getResult()) {
-                case Lookup.SUCCESSFUL:
-                    logger.debug("Query for NS Records of zone {} from server {} took {}ms", zone.toString(true), bestIP, latency);
-                    out.println("Lookup.SUCCESSFUL -> NOERROR<br>");
-                    out.println(zone.toString(true) + " is delegated to:<br>");
-                    for (i = 0; i < la.getAnswers().length; i++) {
-                        NSRecord rr = (NSRecord) la.getAnswers()[i];
-                        out.println(rr.getTarget().toString(true) + "<br>");
-                    }
-                    break;
-                case Lookup.HOST_NOT_FOUND:
-                    out.println("Lookup.HOST_NOT_FOUND -> NXDOMAIN<br>");
-                    logger.debug("HOST_NOT_FOUND NS RRSet for {}", zone.toString(true));
-                    break;
-                case Lookup.TYPE_NOT_FOUND:
-                    out.println("Lookup.TYPE_NOT_FOUND -> NOERROR, but no NS Records at " + zone.toString(true) + "<br>");
-                    logger.debug("TYPE_NOT_FOUND NS RRSet for {}", zone.toString(true));
-                    break;
-                default:
-                    out.println("SERVFAIL " + la.getErrorString() + "<br>");
-                    logger.warn("query NS RRSet for {} to IP {} failed!", zone.toString(true), bestIP);
-                    break;
+            if (!query.getQuestion().equals(dnsResponse.getQuestion())) {
+                // The answer doesn't match the question.  That's not good.
+                badresponse = true;
+                badresponse_error = "response does not match query";
+
+                qr.setStatus("Error");
+                qr.setDiagnostics("response does not match query");
             }
-            out.println("Query took " + latency + "ms");
-            out.println("<hr>");
-            out.println("Session und Connection Information:<br>");
-            out.println("RemoteAddress: " + request.getRemoteAddr());
-            out.println("<hr>");
-            out.println("Generated at: " + new Date().toString() + "<br>");
-            out.println("Total generation time: " + (System.currentTimeMillis() - startTs) + "ms<br>");
-            out.println("</body>");
-            out.println("</html>");
+
+            Cache cache = new Cache();
+            sr = cache.addMessage(dnsResponse);
+            if (sr.isSuccessful() || sr.isDelegation()) {
+                qr.setNsServers(sr);
+            }
+
+            /*
+            public class QueryResult {
+
+             private long queryTime;
+             private String status; // NXDOMAIN; NOERROR; Error
+             private String[] nsServers; // NULL if NXDOMAIN or Error
+             private String queriedServer;
+             private String diagnostics;
+             */
+            if (debug) {
+                // HTML output
+                response.setContentType("text/html;charset=UTF-8");
+
+                out.println("<html>");
+                out.println("<head>");
+                out.println("<title>Servlet Delegating NS RRSet");
+                out.println("</title>");
+                out.println("<body>");
+
+                out.println("request.getPathInfo(): " + zoneStr + "<br>");
+
+                out.println("<h1>Cache content for " + tld + "</h1>");
+                out.println("<table>");
+                for (Map.Entry<Long, String[]> entry : servers.entrySet()) {
+                    String[] server = entry.getValue();
+                    out.format("<tr><td>%s</td><td>%s</td><td>%s</td></tr>\n", server[0], server[1], server[2]);
+                }
+                out.println("</table>");
+
+                // check bestIP not null
+                out.println("<h1>Delegating NS RRSet for " + zone.toString(true) + "</h1>");
+                out.format("Query NS Records for zone %s from server %s<br>", zone.toString(true), bestIP);
+                out.format("Queried %s/%s, id=%d: %s<br>\n", zone, Type.string(type), dnsResponse.getHeader().getID(), sr);
+
+                out.println("Query took " + latency + "ms");
+                out.println("<hr>");
+                out.println("Session und Connection Information:<br>");
+                out.println("RemoteAddress: " + request.getRemoteAddr());
+                out.println("<hr>");
+                out.println("Generated at: " + new Date().toString() + "<br>");
+                out.println("Total generation time: " + (System.currentTimeMillis() - startTs) + "ms<br>");
+                out.println("</body>");
+                out.println("</html>");
+            } else {
+                // return JSON
+                String qrJsonString = new Gson().toJson(qr);
+                response.setContentType("application/json");
+                response.setCharacterEncoding("UTF-8");
+                out.print(qrJsonString);
+
+            }
         } catch (Exception e) {
             out.println(e.toString());
             e.printStackTrace();

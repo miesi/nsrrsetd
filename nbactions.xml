@@ -10,7 +10,7 @@
                 <goal>org.codehaus.mojo:exec-maven-plugin:1.5.0:exec</goal>
             </goals>
             <properties>
-                <exec.args>-Dorg.slf4j.simpleLogger.defaultLogLevel=debug -classpath %classpath ${packageClassName}</exec.args>
+                <exec.args>-Dorg.slf4j.simpleLogger.defaultLogLevel=debug -classpath %classpath de.mieslinger.nsrrsetd.Main</exec.args>
                 <exec.executable>java</exec.executable>
             </properties>
         </action>
