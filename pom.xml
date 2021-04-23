@@ -26,14 +26,32 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>de.mieslinger</groupId>
     <artifactId>nsrrsetd</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.3</version>
     <packaging>jar</packaging>
-       <repositories>
-       <repository>
-           <id>repo2_maven_org</id>
-           <url>http://repo2.maven.org/maven2</url>
-       </repository>
-   </repositories>
+    <name>NS RRset Daemon</name>
+    <organization>
+        <name>IONOS SE</name>
+        <url>https://www.ionos.com/</url>
+    </organization>
+
+    <description>
+        Inspired by DNS Standheizung, this is a combined daemon to
+        - warm up the cache of the configured resolver with all delegations found in the root-zone
+        - query all Nameserver IPs of the root-zone directly and record query-time (can be disabled)
+        - start a jetty to display contents of the Cache containing tld, IP and latency (can be disabled)
+        - JSON REST API to get the delegating NS RRSet of a second level zone
+
+        Notes
+        - third level domains like .co.uk are correctly handled
+        - third level domains like de.com are NOT correctly handled
+    </description>    
+    
+    <repositories>
+        <repository>
+            <id>repo2_maven_org</id>
+            <url>http://repo2.maven.org/maven2</url>
+        </repository>
+    </repositories>
     <dependencies>
         <dependency>
             <groupId>com.github.spullara.cli-parser</groupId>
@@ -81,14 +99,14 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
-       <build>
+    <build>
         <plugins>
             <plugin>
                 <artifactId>maven-assembly-plugin</artifactId>
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>de.mieslinger.dnscachewarmer.Main</mainClass>
+                            <mainClass>de.mieslinger.nsrrsetd.Main</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>
@@ -102,6 +120,66 @@
                         <goals>
                             <goal>single</goal>
                         </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>2.3.2</version>
+                <configuration>
+                    <showDeprecation>true</showDeprecation>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>de.dentrassi.maven</groupId>
+                <artifactId>rpm</artifactId>
+                <version>1.5.0</version>
+                <executions>
+                    <execution>
+          
+                        <goals>
+                            <goal>rpm</goal>
+                        </goals>
+            
+                        <configuration>
+                            <skipSigning>true</skipSigning>
+                            <attach>false</attach> <!-- don't attach RPM -->
+                            <license>MIT</license>
+                            <distribution>No</distribution>
+                            <group>Application/Collectors</group>
+                            <packager>thomas.mieslinger@ionos.com</packager>
+                            <prefix>/opt/nsrrsetd</prefix>
+                            <!--<changelogFile>src/changelog</changelogFile>-->
+                            <requires>
+                                <require>java-headless &gt; 1.8</require>
+                            </requires>
+
+                            <entries>
+                                <entry>
+                                    <name>/usr/lib/systemd/system/nsrrsetd@.service</name>
+                                    <file>src/main/systemd/nsrrsetd@.service</file>
+                                    <user>root</user>
+                                    <group>root</group>
+                                    <mode>0444</mode>
+                                </entry>
+                                <entry>
+                                    <name>/etc/sysconfig/nsrrsetd</name>
+                                    <file>src/main/sysconfig/nsrrsetd</file>
+                                    <user>root</user>
+                                    <group>root</group>
+                                    <mode>0444</mode>
+                                    <configuration>true</configuration>
+                                </entry>
+                                <entry>
+                                    <name>/opt/nsrrsetd/nsrrsetd.jar</name>
+                                    <file>target/nsrrsetd-${project.version}-jar-with-dependencies.jar</file>
+                                    <user>root</user>
+                                    <group>root</group>
+                                    <mode>0444</mode>
+                                </entry>                
+                            </entries>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

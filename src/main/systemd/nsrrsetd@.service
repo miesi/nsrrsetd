@@ -1,0 +1,16 @@
+[Unit]
+Description=DNS Cache Warmer for Instance %i
+After=network-online.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+StartLimitInterval=200
+StartLimitBurst=5
+LimitNOFILE=40000
+EnvironmentFile=-/etc/sysconfig/nsrrsetd
+ExecStart=/usr/bin/java $JAVAARGS -jar /opt/nsrrsetd/nsrrsetd.jar -r %i $NSRRSETARGS
+
+[Install]
+WantedBy=multi-user.target

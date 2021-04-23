@@ -59,8 +59,19 @@ apt install maven openjdk-11-jre-headless
 ### Building
 
 ```
+git clone https://github.com/miesi/nsrrsetd
 cd nsrrsetd/
-mvn package
+mvn clean install
+```
+
+produces in `target/` the .jar, jar with dependencies and a rpm.
+
+## Installation
+
+CentOS 7+ (and alma, rocky, oracle, ...)
+----------------------------------------
+```
+yum install nsrrsetd-1.1-1.noarch.rpm
 ```
 
 ## Running
@@ -70,6 +81,16 @@ Starting with default values
 ```
 java -jar nsrrsetd-1.0-SNAPSHOT-jar-with-dependencies.jar
 ```
+
+As a daemon
+-----------
+The rpm comes with a unit file. To enable and start nsrrsetd like this:
+```
+systemctl enable nsrrsetd@ins.example.com
+systemctl start nsrrsetd@ins.example.com
+```
+Starts to query ins.example.com. Make sure that ins.example.com can be resolved
+at unit start time. (adjust `After=` parameter and submit Pull Request)
 
 Help
 ----

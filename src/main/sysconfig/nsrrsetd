@@ -1,0 +1,9 @@
+# Default settings for nsrrsetd
+# 
+#
+# JAVAARGS go before `-jar ...`
+# JAVAARGS="-Dorg.slf4j.simpleLogger.defaultLogLevel=debug"
+JAVAARGS=
+
+# Disable http interface by default
+NSRRSETARGS="-he 0"
