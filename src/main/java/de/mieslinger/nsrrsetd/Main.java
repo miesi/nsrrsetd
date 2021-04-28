@@ -62,35 +62,41 @@ public class Main {
     private static String resolverToWarm = "10.2.215.21";
 
     @Argument(alias = "nt", description = "Number of Threads for NS lookups (6 by default)")
-    private static int numThreadsNSLookup = 12;
+    private static String strThreadsNSLookup = "12";
+    private static int numThreadsNSLookup;
 
     @Argument(alias = "at", description = "Number of Threads for A lookups (12 by default)")
-    private static int numThreadsALookup = 50;
+    private static String strThreadsALookup = "50";
+    private static int numThreadsALookup;
 
     @Argument(alias = "aaaat", description = "Number of Threads for AAAA lookups (12 by default, 0 for disable)")
-    private static int numThreadsAAAALookup = 50;
+    private static String strThreadsAAAALookup = "50";
+    private static int numThreadsAAAALookup;
 
     @Argument(alias = "dnst", description = "Number of Threads for DNS Check (50 default, 0 for disable))")
-    private static int numThreadsDNSCheck = 100;
+    private static String strThreadsDNSCheck = "100";
+    private static int numThreadsDNSCheck;
 
     @Argument(alias = "t", description = "resolver timeout (4 seconds default)")
-    private static int timeout = 4;
+    private static String strTimeout = "4";
+    private static int numTimeout;
 
     @Argument(alias = "a", description = "retransfer root zone after n seconds (86400 default)")
-    private static int rootZoneMaxAge = 86400;
+    private static String strRootZoneMaxAge = "86400";
 
     @Argument(alias = "bc", description = "background checking of NS/A/AAAA every n seconds (1200s default)")
-    private static int backgroundCheck = 1200;
+    private static String strBackgroundCheck = "1200";
 
     /* somehow set -Dorg.slf4j.simpleLogger.defaultLogLevel=debug with this
      * @Argument(alias = "d", description = "enable debug")
      * private static boolean debug = false;
      */
-    @Argument(alias = "he", description = "http enabled (default true)")
-    private static boolean httpEnabled = true;
+    @Argument(alias = "he", description = "enable http (default disabled)")
+    private static boolean httpEnabled = false;
 
     @Argument(alias = "hp", description = "http port (default 8989)")
-    private static int httpPort = 8989;
+    private static String strHttpPort = "8989";
+    private static int numHttpPort;
 
     private static final ConcurrentLinkedQueue<Record> queueDelegation = new ConcurrentLinkedQueue<>();
     private static final ConcurrentLinkedQueue<QueryNsForIP> queueALookup = new ConcurrentLinkedQueue<>();
@@ -113,10 +119,32 @@ public class Main {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-        //if (debug) {
-        //    org.slf4j.simpleLogger.defaultLogLevel = debug;
-        //}
+
         List<String> unparsed = Args.parseOrExit(Main.class, args);
+
+        //private static String strThreadsNSLookup = 12;
+        numThreadsNSLookup = Integer.parseInt(strThreadsNSLookup);
+
+        //private static String strThreadsALookup = 50;
+        numThreadsALookup = Integer.parseInt(strThreadsALookup);
+
+        //private static String strThreadsAAAALookup = 50;
+        numThreadsAAAALookup = Integer.parseInt(strThreadsAAAALookup);
+
+        //private static String strThreadsDNSCheck = 100;
+        numThreadsDNSCheck = Integer.parseInt(strThreadsDNSCheck);
+
+        //private static String strTimeout = 4;
+        numTimeout = Integer.parseInt(strTimeout);
+
+        //private static String strRootZoneMaxAge = 86400;
+        int numRootZoneMaxAge = Integer.parseInt(strRootZoneMaxAge);
+
+        //private static String strBackgroundCheck = 1200;
+        int numBackgroundCheck = Integer.parseInt(strBackgroundCheck);
+
+        //String strHttpPort = 8989;
+        numHttpPort = Integer.parseInt(strHttpPort);
 
         if (numThreadsAAAALookup <= 0) {
             doAAAAlookup = false;
@@ -161,8 +189,6 @@ public class Main {
              *  }
              */
             //END Shortcut
-            
-            
             while (queueALookup.size() > 5 || queueDelegation.size() > 5 || queueDNSCheck.size() > 1) {
                 try {
                     logger.info("delegation queue {}, A queue {}, AAAA queue {}, Check queue {}",
@@ -178,15 +204,15 @@ public class Main {
 
             tldCacheComplete = true;
 
-            if (lastTransfer + rootZoneMaxAge < System.currentTimeMillis()) {
+            if (lastTransfer + numRootZoneMaxAge < System.currentTimeMillis()) {
                 logger.info("retransfering outdated root zone");
                 transferRootZone();
             }
 
             // sleep reRun time
             try {
-                logger.info("sleeping {} until next run", backgroundCheck);
-                Thread.sleep(backgroundCheck * 1000);
+                logger.info("sleeping {} until next run", numBackgroundCheck);
+                Thread.sleep(numBackgroundCheck * 1000);
             } catch (Exception e) {
                 logger.warn("reRun sleep was interrupted: {}", e.getMessage());
             }
@@ -210,19 +236,19 @@ public class Main {
 
     private static void setupWorkerThreads() {
         for (int i = 0; i < numThreadsNSLookup; i++) {
-            Thread tNSLookup = new Thread(new DelegationNSSetLookup(queueDelegation, queueALookup, queueAAAALookup, resolverToWarm, timeout));
+            Thread tNSLookup = new Thread(new DelegationNSSetLookup(queueDelegation, queueALookup, queueAAAALookup, resolverToWarm, numTimeout));
             tNSLookup.setDaemon(true);
             tNSLookup.setName("DelegationNSSetLookup-" + i);
             tNSLookup.start();
         }
         for (int i = 0; i < numThreadsALookup; i++) {
-            Thread tNSLookup = new Thread(new NSALookup(queueALookup, queueDNSCheck, resolverToWarm, timeout));
+            Thread tNSLookup = new Thread(new NSALookup(queueALookup, queueDNSCheck, resolverToWarm, numTimeout));
             tNSLookup.setDaemon(true);
             tNSLookup.setName("NSALookup-" + i);
             tNSLookup.start();
         }
         for (int i = 0; i < numThreadsAAAALookup; i++) {
-            Thread tNSLookup = new Thread(new NSAAAALookup(queueAAAALookup, queueDNSCheck, resolverToWarm, timeout));
+            Thread tNSLookup = new Thread(new NSAAAALookup(queueAAAALookup, queueDNSCheck, resolverToWarm, numTimeout));
             tNSLookup.setDaemon(true);
             tNSLookup.setName("NSAAAALookup-" + i);
             tNSLookup.start();
@@ -248,11 +274,11 @@ public class Main {
     private static void startJetty() {
         try {
 
-            jetty = new Server(httpPort);
+            jetty = new Server(numHttpPort);
 
             ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
             context.setContextPath("/");
-            //context.setBaseResource(baseResource);
+            
             jetty.setHandler(context);
 
             context.addServlet(ServletRoot.class, "/");
