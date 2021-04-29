@@ -115,7 +115,7 @@ public class DelegationNSSetLookup implements Runnable {
             }
         } else {
             // Lookup unsuccessful
-            logger.warn("query NS for tld delegation {} failed!", delegation);
+            logger.warn("query NS for tld delegation {} failed! (Error: {})", delegation, l.getErrorString());
         }
     }
 
