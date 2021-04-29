@@ -138,7 +138,7 @@ public class Main {
         numTimeout = Integer.parseInt(strTimeout);
 
         //private static String strRootZoneMaxAge = 86400;
-        int numRootZoneMaxAge = Integer.parseInt(strRootZoneMaxAge);
+        int numRootZoneMaxAge = Integer.parseInt(strRootZoneMaxAge) * 1000;
 
         //private static String strBackgroundCheck = 1200;
         int numBackgroundCheck = Integer.parseInt(strBackgroundCheck);
