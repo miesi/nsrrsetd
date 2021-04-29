@@ -120,7 +120,7 @@ public class NSAAAALookup implements Runnable {
                 logger.debug("TYPE_NOT_FOUND AAAA record for {}", n);
                 break;
             default:
-                logger.warn("query AAAA for NS {} failed!", n);
+                logger.warn("query AAAA for NS {} tld {} failed! (Error: {})", n, n.getTld().toString(true), la.getErrorString());
                 break;
         }
     }
