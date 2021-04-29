@@ -92,7 +92,7 @@ public class LookupZone implements Runnable {
                 s.storeLatency(n.getZone(), n.getIp(), latency, end);
                 break;
             default:
-                logger.info("Query for NS Records of zone {} from server {} timed out", n.getZone(), n.getIp());
+                logger.info("Query for NS Records of zone {} from server {} failed (Error: {})", n.getZone(), n.getIp(), la.getErrorString());
                 break;
         }
     }
