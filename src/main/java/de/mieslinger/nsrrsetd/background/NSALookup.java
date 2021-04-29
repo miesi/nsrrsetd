@@ -42,7 +42,7 @@ import org.xbill.DNS.Type;
  * @author mieslingert
  */
 public class NSALookup implements Runnable {
-
+    
     private ConcurrentLinkedQueue<QueryNsForIP> queueALookup;
     private ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck;
     private String resolverToWarm;
@@ -51,11 +51,11 @@ public class NSALookup implements Runnable {
     private Cache c;
     private int timeout;
     private boolean doQueryTLDserver = true;
-
+    
     private NSALookup() {
-
+        
     }
-
+    
     public NSALookup(ConcurrentLinkedQueue<QueryNsForIP> queueALookup,
             ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck,
             String resolverToWarm,
@@ -68,7 +68,7 @@ public class NSALookup implements Runnable {
         this.timeout = timeout;
         this.doQueryTLDserver = Main.doQueryTLDserver();
     }
-
+    
     @Override
     public void run() {
         while (keepOnRunning) {
@@ -83,9 +83,9 @@ public class NSALookup implements Runnable {
                 logger.warn("A Lookup Exception: ", e);
             }
         }
-
+        
     }
-
+    
     private void doLookup(QueryNsForIP n) throws Exception {
         logger.debug("Query A for {} of tld {}", n.getServerName(), n.getTld());
         Lookup la = new Lookup(n.getServerName(), Type.A, DClass.IN);
@@ -116,7 +116,7 @@ public class NSALookup implements Runnable {
                 logger.debug("TYPE_NOT_FOUND A record for {}", n);
                 break;
             default:
-                logger.warn("query A for NS {} tld {} failed! (Error: {})", n,  n.getTld().toString(true), la.getErrorString());
+                logger.warn("query A for NS {} tld {} failed! (Error: {})", n.getServerName().toString(true), n.getTld().toString(true), la.getErrorString());
                 break;
         }
     }

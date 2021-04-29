@@ -42,7 +42,7 @@ import org.xbill.DNS.Type;
  * @author mieslingert
  */
 public class NSAAAALookup implements Runnable {
-
+    
     private ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup;
     private ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck;
     private String resolverToWarm;
@@ -51,16 +51,16 @@ public class NSAAAALookup implements Runnable {
     private Cache c;
     private int timeout;
     private boolean doQueryTLDserver = true;
-
+    
     private NSAAAALookup() {
-
+        
     }
-
+    
     public NSAAAALookup(ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup,
             ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck,
             String resolverToWarm,
             int timeout) {
-
+        
         this.queueAAAALookup = queueAAAALookup;
         this.queueDNSCheck = queueDNSCheck;
         this.resolverToWarm = resolverToWarm;
@@ -68,9 +68,9 @@ public class NSAAAALookup implements Runnable {
         c.setMaxEntries(0);
         this.timeout = timeout;
         this.doQueryTLDserver = Main.doQueryTLDserver();
-
+        
     }
-
+    
     @Override
     public void run() {
         while (keepOnRunning) {
@@ -85,9 +85,9 @@ public class NSAAAALookup implements Runnable {
                 logger.warn("AAAA Lookup Exception: ", e);
             }
         }
-
+        
     }
-
+    
     private void doLookup(QueryNsForIP n) throws Exception {
         logger.debug("Query AAAA for {} of tld {}", n.getServerName(), n.getTld());
         Lookup la = new Lookup(n.getServerName(), Type.AAAA, DClass.IN);
@@ -120,9 +120,9 @@ public class NSAAAALookup implements Runnable {
                 logger.debug("TYPE_NOT_FOUND AAAA record for {}", n);
                 break;
             default:
-                logger.warn("query AAAA for NS {} tld {} failed! (Error: {})", n, n.getTld().toString(true), la.getErrorString());
+                logger.warn("query AAAA for NS {} tld {} failed! (Error: {})", n.getServerName().toString(true), n.getTld().toString(true), la.getErrorString());
                 break;
         }
     }
-
+    
 }
