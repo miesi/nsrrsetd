@@ -116,7 +116,7 @@ public class NSALookup implements Runnable {
                 logger.debug("TYPE_NOT_FOUND A record for {}", n);
                 break;
             default:
-                logger.warn("query A for NS {} failed!", n.getTld().toString(true));
+                logger.warn("query A for NS {} tld {} failed! (Error: {})", n,  n.getTld().toString(true), la.getErrorString());
                 break;
         }
     }
