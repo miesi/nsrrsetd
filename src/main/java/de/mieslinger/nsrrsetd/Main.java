@@ -113,6 +113,7 @@ public class Main {
     private static Server jetty;
     private static boolean doAAAAlookup = true;
     private static boolean doQueryTLDserver = true;
+    public static boolean doStoreResults = true;
     private static boolean tldCacheComplete = false;
 
     /**
@@ -151,9 +152,10 @@ public class Main {
         }
         if (numThreadsDNSCheck <= 0) {
             doQueryTLDserver = false;
+            doStoreResults = false;
+        } else {
+            setupDB();
         }
-
-        setupDB();
 
         setupWorkerThreads();
 
@@ -278,7 +280,7 @@ public class Main {
 
             ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
             context.setContextPath("/");
-            
+
             jetty.setHandler(context);
 
             context.addServlet(ServletRoot.class, "/");

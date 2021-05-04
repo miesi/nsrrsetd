@@ -65,24 +65,27 @@ public class LatencyStore {
     }
 
     public void storeLatency(Name tld, InetAddress ip, long latency, long lastUpdated) {
-        try {
-            // FIXME: Delete old entries (older than 3x reRun?)
-            PreparedStatement st = cn.prepareStatement("merge into serverLatency "
-                    + "key(tld,ip) "
-                    + "values (?,?,?,?,?);");
-            st.setString(1, tld.toString(true));
-            st.setString(2, ip.getHostAddress());
-            if (ip instanceof Inet6Address) {
-                st.setInt(3, 6);
-            } else {
-                st.setInt(3, 4);
+        if (de.mieslinger.nsrrsetd.Main.doStoreResults) {
+            try {
+                // FIXME: Delete old entries (older than 3x reRun?)
+                PreparedStatement st = cn.prepareStatement("merge into serverLatency "
+                        + "key(tld,ip) "
+                        + "values (?,?,?,?,?);");
+                st.setString(1, tld.toString(true));
+                st.setString(2, ip.getHostAddress());
+                if (ip instanceof Inet6Address) {
+                    st.setInt(3, 6);
+                } else {
+                    st.setInt(3, 4);
+                }
+                st.setLong(4, latency);
+                st.setLong(5, lastUpdated);
+                st.execute();
+                logger.debug("inserted {} {} {}ms", tld.toString(true), ip.getHostAddress(), latency);
+                st.close();
+            } catch (Exception e) {
+                logger.warn("merge failed: {}", e.toString());
             }
-            st.setLong(4, latency);
-            st.setLong(5, lastUpdated);
-            st.execute();
-            logger.debug("inserted {} {} {}ms", tld.toString(true), ip.getHostAddress(), latency);
-        } catch (Exception e) {
-            logger.warn("merge failed: {}", e.toString());
         }
     }
 
@@ -100,6 +103,8 @@ public class LatencyStore {
                 sb.append(rs.getInt(3));
                 sb.append(";\n");
             }
+            rs.close();
+            st.close();
             return sb.toString();
         } catch (Exception e) {
             logger.warn("failed to dump table serverLatency");
