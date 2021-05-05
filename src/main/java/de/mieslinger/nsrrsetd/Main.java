@@ -215,6 +215,7 @@ public class Main {
             try {
                 logger.info("sleeping {} until next run", numBackgroundCheck);
                 Thread.sleep(numBackgroundCheck * 1000);
+                System.gc();
             } catch (Exception e) {
                 logger.warn("reRun sleep was interrupted: {}", e.getMessage());
             }

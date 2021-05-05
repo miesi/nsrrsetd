@@ -3,7 +3,7 @@
 #
 # JAVAARGS go before `-jar ...`
 # JAVAARGS="-Dorg.slf4j.simpleLogger.defaultLogLevel=debug"
-JAVAARGS=
+JAVAARGS="-XX:+UseShenandoahGC -Xmx2g -Xms32m -XX:+UnlockExperimentalVMOptions -XX:ShenandoahUncommitDelay=5000 -XX:ShenandoahGuaranteedGCInterval=50000"
 
 # http interface is disabled by default
 # Do not test individual tld nameserver performance
