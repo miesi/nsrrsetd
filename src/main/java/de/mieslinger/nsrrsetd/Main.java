@@ -56,7 +56,7 @@ import org.xbill.DNS.ZoneTransferIn;
 public class Main {
 
     @Argument(alias = "s", description = "AXFR source for '.' Zone")
-    private static String axfrSource = "iad.xfr.dns.icann.org";
+    private static String axfrSource = "ns-anyslv.ui-dns.com";
 
     @Argument(alias = "r", description = "Resolver to query")
     private static String resolverToWarm = "10.2.215.21";

@@ -68,10 +68,10 @@ produces in `target/` the .jar, jar with dependencies and a rpm.
 
 ## Installation
 
-CentOS 7+ (and alma, rocky, oracle, ...)
+CentOS 7+ (and alma, rocky, oracle, redhat, ...)
 ----------------------------------------
 ```
-yum install nsrrsetd-1.1-1.noarch.rpm
+yum install nsrrsetd-1.8-1.noarch.rpm
 ```
 
 ## Running
@@ -79,7 +79,7 @@ yum install nsrrsetd-1.1-1.noarch.rpm
 Starting with default values
 ----------------------------
 ```
-java -jar nsrrsetd-1.0-SNAPSHOT-jar-with-dependencies.jar
+java -jar nsrrsetd-1.8-SNAPSHOT-jar-with-dependencies.jar
 ```
 
 As a daemon
@@ -95,10 +95,10 @@ at unit start time. (adjust `After=` parameter and submit Pull Request)
 Help
 ----
 ```
-java -jar nsrrsetd-1.0-SNAPSHOT-jar-with-dependencies.jar --help
+java -jar nsrrsetd-1.8-SNAPSHOT-jar-with-dependencies.jar --help
 
     @Argument(alias = "s", description = "AXFR source for '.' Zone")
-    private static String axfrSource = "iad.xfr.dns.icann.org";
+    private static String axfrSource = "ns-anyslv.ui-dns.com";
 
     @Argument(alias = "r", description = "Resolver to query")
     private static String resolverToWarm = "10.2.215.21";
@@ -130,6 +130,9 @@ java -jar nsrrsetd-1.0-SNAPSHOT-jar-with-dependencies.jar --help
     @Argument(alias = "hp", description = "http port (default 8989)")
     private static int httpPort = 8989;
 ```
+
+If you don't trust `ns-anyslv.ui-dns.com` you can use the `iad.xfr.dns.icann.org` as AXFR Source. See also icann.org website.
+`iad.xfr.dns.icann.org` has a low transferlimit per IP and minute.
 
 ## "API" continued
 /statistics
