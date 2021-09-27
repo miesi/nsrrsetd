@@ -1,8 +1,16 @@
 [Unit]
 Description=DNS Cache Warmer for Instance %i
 After=network-online.target
+#After=network.target
+#After=mariadb@%i.service
+#After=mariadb-upgrade@%i.service
+#After=mariadb-init@%i.service
+#BindsTo=mariadb@%i.service
+#BindsTo=mariadb-upgrade@%i.service
+#BindsTo=mariadb-init@%i.service
 
 [Service]
+#run as user nobody
 Type=simple
 Restart=always
 RestartSec=5
@@ -11,6 +19,7 @@ StartLimitBurst=5
 LimitNOFILE=40000
 EnvironmentFile=-/etc/sysconfig/nsrrsetd
 ExecStart=/usr/bin/java $JAVAARGS -jar /opt/nsrrsetd/nsrrsetd.jar -r %i $NSRRSETARGS
-
-[Install]
-WantedBy=multi-user.target
+ProtectSystem=full
+ProtectHome=true
+PrivateDevices=true
+PrivateTmp=true

@@ -58,6 +58,10 @@ public class Main {
     @Argument(alias = "s", description = "AXFR source for '.' Zone")
     private static String axfrSource = "ns-anyslv.ui-dns.com";
 
+    @Argument(alias = "sr", description = "AXFR retries")
+    private static String strAxfrRetries = "3";
+    private static int numAxfrRetries;
+
     @Argument(alias = "r", description = "Resolver to query")
     private static String resolverToWarm = "10.2.215.21";
 
@@ -109,7 +113,7 @@ public class Main {
     private static final String jdbcUrl = "jdbc:h2:mem:myDB;DB_CLOSE_DELAY=-1";
     private static Connection dbConn;
     private static LatencyStore s;
-    private static long lastTransfer;
+    private static long lastTransfer = 0;
     private static Server jetty;
     private static boolean doAAAAlookup = true;
     private static boolean doQueryTLDserver = true;
@@ -122,6 +126,10 @@ public class Main {
     public static void main(String[] args) {
 
         List<String> unparsed = Args.parseOrExit(Main.class, args);
+
+        // @Argument(alias = "sr", description = "AXFR retries")
+        // private static String strAxfrRetries = "3";
+        numAxfrRetries = Integer.parseInt(strAxfrRetries);
 
         //private static String strThreadsNSLookup = 12;
         numThreadsNSLookup = Integer.parseInt(strThreadsNSLookup);
@@ -223,18 +231,30 @@ public class Main {
     }
 
     private static void transferRootZone() {
-        try {
-            ZoneTransferIn xfr = ZoneTransferIn.newAXFR(new Name("."), axfrSource, null);
-            xfr.run();
-            records = xfr.getAXFR();
-            lastSeenName = new Name("abrakadabr.test");
-            lastTransfer = System.currentTimeMillis();
-        } catch (Exception e) {
-            logger.error("AXFR failed: {}, exiting", e.toString());
-            // FIXME: only die if first transfer after startup fails
+        int waitTimeMillis = 10000;
+        for (int i = 0; i < numAxfrRetries; i++) {
+            try {
+                ZoneTransferIn xfr = ZoneTransferIn.newAXFR(new Name("."), axfrSource, null);
+                xfr.run();
+                records = xfr.getAXFR();
+                lastSeenName = new Name("abrakadabr.test");
+                lastTransfer = System.currentTimeMillis();
+                break;
+            } catch (Exception e) {
+                logger.error("AXFR failed: {}, exiting", e.getMessage());
+                e.printStackTrace();
+                try {
+                    Thread.sleep(waitTimeMillis);
+                } catch (Exception ex) {
+                    logger.info("Sleep after failed transfer was interrupted: {}", e.toString());
+                }
+                waitTimeMillis = waitTimeMillis * 2;
+            }
+        }
+        if (lastTransfer == 0) {
+            logger.error("all AXFR attempts failed, giving up.");
             System.exit(1);
         }
-
     }
 
     private static void setupWorkerThreads() {
