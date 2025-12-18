@@ -32,8 +32,9 @@ import de.mieslinger.nsrrsetd.servlets.ServletGetDelegatingNSSet;
 import de.mieslinger.nsrrsetd.servlets.ServletStatistics;
 import de.mieslinger.nsrrsetd.transfer.QueryIpForZone;
 import de.mieslinger.nsrrsetd.transfer.QueryNsForIP;
-import com.sampullara.cli.Args;
-import com.sampullara.cli.Argument;
+import picocli.CommandLine;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 import de.mieslinger.nsrrsetd.servlets.ServletRoot;
 import de.mieslinger.nsrrsetd.servlets.ServletStatus;
 import java.sql.Connection;
@@ -41,7 +42,7 @@ import java.sql.DriverManager;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.servlet.ServletContextHandler;
+import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xbill.DNS.Name;
@@ -53,54 +54,49 @@ import org.xbill.DNS.ZoneTransferIn;
  *
  * @author mieslingert
  */
-public class Main {
+@Command(name = "nsrrsetd", mixinStandardHelpOptions = true,
+         description = "NS RRset Daemon - DNS cache warming and monitoring tool")
+public class Main implements Runnable {
 
-    @Argument(alias = "s", description = "AXFR source for '.' Zone")
+    @Option(names = {"-s", "--axfr-source"}, description = "AXFR source for '.' Zone (default: ${DEFAULT-VALUE})")
     private static String axfrSource = "ns-anyslv.ui-dns.com";
 
-    @Argument(alias = "sr", description = "AXFR retries")
-    private static String strAxfrRetries = "3";
-    private static int numAxfrRetries;
+    @Option(names = {"-sr", "--axfr-retries"}, description = "AXFR retries (default: ${DEFAULT-VALUE})")
+    private static int numAxfrRetries = 3;
 
-    @Argument(alias = "r", description = "Resolver to query")
+    @Option(names = {"-r", "--resolver"}, description = "Resolver to query (default: ${DEFAULT-VALUE})")
     private static String resolverToWarm = "10.2.215.21";
 
-    @Argument(alias = "nt", description = "Number of Threads for NS lookups (6 by default)")
-    private static String strThreadsNSLookup = "12";
-    private static int numThreadsNSLookup;
+    @Option(names = {"-nt", "--ns-threads"}, description = "Number of Threads for NS lookups (default: ${DEFAULT-VALUE})")
+    private static int numThreadsNSLookup = 12;
 
-    @Argument(alias = "at", description = "Number of Threads for A lookups (12 by default)")
-    private static String strThreadsALookup = "50";
-    private static int numThreadsALookup;
+    @Option(names = {"-at", "--a-threads"}, description = "Number of Threads for A lookups (default: ${DEFAULT-VALUE})")
+    private static int numThreadsALookup = 50;
 
-    @Argument(alias = "aaaat", description = "Number of Threads for AAAA lookups (12 by default, 0 for disable)")
-    private static String strThreadsAAAALookup = "50";
-    private static int numThreadsAAAALookup;
+    @Option(names = {"-aaaat", "--aaaa-threads"}, description = "Number of Threads for AAAA lookups (0 to disable) (default: ${DEFAULT-VALUE})")
+    private static int numThreadsAAAALookup = 50;
 
-    @Argument(alias = "dnst", description = "Number of Threads for DNS Check (50 default, 0 for disable))")
-    private static String strThreadsDNSCheck = "100";
-    private static int numThreadsDNSCheck;
+    @Option(names = {"-dnst", "--dns-check-threads"}, description = "Number of Threads for DNS Check (0 to disable) (default: ${DEFAULT-VALUE})")
+    private static int numThreadsDNSCheck = 100;
 
-    @Argument(alias = "t", description = "resolver timeout (4 seconds default)")
-    private static String strTimeout = "4";
-    private static int numTimeout;
+    @Option(names = {"-t", "--timeout"}, description = "resolver timeout in seconds (default: ${DEFAULT-VALUE})")
+    private static int numTimeout = 4;
 
-    @Argument(alias = "a", description = "retransfer root zone after n seconds (86400 default)")
-    private static String strRootZoneMaxAge = "86400";
+    @Option(names = {"-a", "--root-zone-max-age"}, description = "retransfer root zone after n seconds (default: ${DEFAULT-VALUE})")
+    private static int strRootZoneMaxAge = 86400;
 
-    @Argument(alias = "bc", description = "background checking of NS/A/AAAA every n seconds (1200s default)")
-    private static String strBackgroundCheck = "1200";
+    @Option(names = {"-bc", "--background-check"}, description = "background checking of NS/A/AAAA every n seconds (default: ${DEFAULT-VALUE})")
+    private static int strBackgroundCheck = 1200;
 
     /* somehow set -Dorg.slf4j.simpleLogger.defaultLogLevel=debug with this
-     * @Argument(alias = "d", description = "enable debug")
+     * @Option(names = {"-d", "--debug"}, description = "enable debug")
      * private static boolean debug = false;
      */
-    @Argument(alias = "he", description = "enable http (default disabled)")
+    @Option(names = {"-he", "--http-enabled"}, description = "enable http (default: ${DEFAULT-VALUE})")
     private static boolean httpEnabled = false;
 
-    @Argument(alias = "hp", description = "http port (default 8989)")
-    private static String strHttpPort = "8989";
-    private static int numHttpPort;
+    @Option(names = {"-hp", "--http-port"}, description = "http port (default: ${DEFAULT-VALUE})")
+    private static int numHttpPort = 8989;
 
     private static final ConcurrentLinkedQueue<Record> queueDelegation = new ConcurrentLinkedQueue<>();
     private static final ConcurrentLinkedQueue<QueryNsForIP> queueALookup = new ConcurrentLinkedQueue<>();
@@ -124,36 +120,16 @@ public class Main {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
+        int exitCode = new CommandLine(new Main()).execute(args);
+        if (exitCode != 0) {
+            System.exit(exitCode);
+        }
+    }
 
-        List<String> unparsed = Args.parseOrExit(Main.class, args);
-
-        // @Argument(alias = "sr", description = "AXFR retries")
-        // private static String strAxfrRetries = "3";
-        numAxfrRetries = Integer.parseInt(strAxfrRetries);
-
-        //private static String strThreadsNSLookup = 12;
-        numThreadsNSLookup = Integer.parseInt(strThreadsNSLookup);
-
-        //private static String strThreadsALookup = 50;
-        numThreadsALookup = Integer.parseInt(strThreadsALookup);
-
-        //private static String strThreadsAAAALookup = 50;
-        numThreadsAAAALookup = Integer.parseInt(strThreadsAAAALookup);
-
-        //private static String strThreadsDNSCheck = 100;
-        numThreadsDNSCheck = Integer.parseInt(strThreadsDNSCheck);
-
-        //private static String strTimeout = 4;
-        numTimeout = Integer.parseInt(strTimeout);
-
-        //private static String strRootZoneMaxAge = 86400;
-        int numRootZoneMaxAge = Integer.parseInt(strRootZoneMaxAge) * 1000;
-
-        //private static String strBackgroundCheck = 1200;
-        int numBackgroundCheck = Integer.parseInt(strBackgroundCheck);
-
-        //String strHttpPort = 8989;
-        numHttpPort = Integer.parseInt(strHttpPort);
+    @Override
+    public void run() {
+        int numRootZoneMaxAge = strRootZoneMaxAge * 1000;
+        int numBackgroundCheck = strBackgroundCheck;
 
         if (numThreadsAAAALookup <= 0) {
             doAAAAlookup = false;
@@ -296,7 +272,6 @@ public class Main {
 
     private static void startJetty() {
         try {
-
             jetty = new Server(numHttpPort);
 
             ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);

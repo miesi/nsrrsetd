@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>de.mieslinger</groupId>
+  <artifactId>nsrrsetd</artifactId>
+  <name>NS RRset Daemon</name>
+  <version>2.0</version>
+  <description>Inspired by DNS Standheizung, this is a combined daemon to
+        - warm up the cache of the configured resolver with all delegations found in the root-zone
+        - query all Nameserver IPs of the root-zone directly and record query-time (can be disabled)
+        - start a jetty to display contents of the Cache containing tld, IP and latency (can be disabled)
+        - JSON REST API to get the delegating NS RRSet of a second level zone
+
+        Notes
+        - third level domains like .co.uk are correctly handled
+        - third level domains like de.com are NOT correctly handled</description>
+  <organization>
+    <name>IONOS SE</name>
+    <url>https://www.ionos.com/</url>
+  </organization>
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <shadedArtifactAttached>true</shadedArtifactAttached>
+              <shadedClassifierName>jar-with-dependencies</shadedClassifierName>
+              <transformers>
+                <transformer>
+                  <mainClass>de.mieslinger.nsrrsetd.Main</mainClass>
+                  <manifestEntries>
+                    <Multi-Release>true</Multi-Release>
+                  </manifestEntries>
+                </transformer>
+                <transformer />
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <showDeprecation>true</showDeprecation>
+          <release>21</release>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>de.dentrassi.maven</groupId>
+        <artifactId>rpm</artifactId>
+        <version>1.5.0</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>rpm</goal>
+            </goals>
+            <configuration>
+              <skipSigning>true</skipSigning>
+              <attach>false</attach>
+              <license>MIT</license>
+              <distribution>No</distribution>
+              <group>Application/Collectors</group>
+              <packager>thomas.mieslinger@ionos.com</packager>
+              <prefix>/opt/nsrrsetd</prefix>
+              <requires>
+                <require>java-headless &gt;= 21</require>
+              </requires>
+              <entries>
+                <entry>
+                  <name>/usr/lib/systemd/system/nsrrsetd@.service</name>
+                  <file>src/main/systemd/nsrrsetd@.service</file>
+                  <user>root</user>
+                  <group>root</group>
+                  <mode>0444</mode>
+                </entry>
+                <entry>
+                  <name>/etc/sysconfig/nsrrsetd</name>
+                  <file>src/main/sysconfig/nsrrsetd</file>
+                  <user>root</user>
+                  <group>root</group>
+                  <mode>0444</mode>
+                  <configuration>true</configuration>
+                </entry>
+                <entry>
+                  <name>/opt/nsrrsetd/nsrrsetd.jar</name>
+                  <file>target/nsrrsetd-${project.version}-jar-with-dependencies.jar</file>
+                  <user>root</user>
+                  <group>root</group>
+                  <mode>0444</mode>
+                </entry>
+              </entries>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+  <repositories>
+    <repository>
+      <id>repo2_maven_org</id>
+      <url>http://repo2.maven.org/maven2</url>
+    </repository>
+  </repositories>
+  <properties>
+    <maven.compiler.target>21</maven.compiler.target>
+    <maven.compiler.source>21</maven.compiler.source>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+</project>

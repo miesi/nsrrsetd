@@ -47,13 +47,15 @@ git clone https://github.com/miesi/nsrrsetd
 
 ### Prerequisites
 
+**Java 21 or higher is required**
+
 [Maven](https://maven.apache.org/)
 
 [Java](http://openjdk.java.net/)
 
 On debian based Systems
 ```
-apt install maven openjdk-11-jre-headless
+apt install maven openjdk-21-jre-headless
 ```
 
 ### Building
@@ -68,10 +70,10 @@ produces in `target/` the .jar, jar with dependencies and a rpm.
 
 ## Installation
 
-CentOS 7+ (and alma, rocky, oracle, redhat, ...)
+EL8+ (and alma, rocky, oracle, redhat, ...)
 ----------------------------------------
 ```
-yum install nsrrsetd-1.8-1.noarch.rpm
+dnf install nsrrsetd-2.0-1.noarch.rpm
 ```
 
 ## Running
@@ -79,7 +81,7 @@ yum install nsrrsetd-1.8-1.noarch.rpm
 Starting with default values
 ----------------------------
 ```
-java -jar nsrrsetd-1.8-SNAPSHOT-jar-with-dependencies.jar
+java -jar nsrrsetd-2.0-jar-with-dependencies.jar
 ```
 
 As a daemon
@@ -95,40 +97,40 @@ at unit start time. (adjust `After=` parameter and submit Pull Request)
 Help
 ----
 ```
-java -jar nsrrsetd-1.8-SNAPSHOT-jar-with-dependencies.jar --help
+java -jar nsrrsetd-2.0-jar-with-dependencies.jar --help
+```
 
-    @Argument(alias = "s", description = "AXFR source for '.' Zone")
-    private static String axfrSource = "ns-anyslv.ui-dns.com";
+Command Line Options
+--------------------
 
-    @Argument(alias = "r", description = "Resolver to query")
-    private static String resolverToWarm = "10.2.215.21";
+| Short | Long | Description | Default |
+|-------|------|-------------|---------|
+| `-s` | `--axfr-source` | AXFR source for '.' Zone | ns-anyslv.ui-dns.com |
+| `-sr` | `--axfr-retries` | AXFR retries | 3 |
+| `-r` | `--resolver` | Resolver to query | 10.2.215.21 |
+| `-nt` | `--ns-threads` | Number of Threads for NS lookups | 12 |
+| `-at` | `--a-threads` | Number of Threads for A lookups | 50 |
+| `-aaaat` | `--aaaa-threads` | Number of Threads for AAAA lookups (0 to disable) | 50 |
+| `-dnst` | `--dns-check-threads` | Number of Threads for DNS Check (0 to disable) | 100 |
+| `-t` | `--timeout` | Resolver timeout in seconds | 4 |
+| `-a` | `--root-zone-max-age` | Retransfer root zone after n seconds | 86400 |
+| `-bc` | `--background-check` | Background checking of NS/A/AAAA every n seconds | 1200 |
+| `-he` | `--http-enabled` | Enable HTTP server | false |
+| `-hp` | `--http-port` | HTTP server port | 8989 |
+| `-h` | `--help` | Show help message and exit | - |
+| `-V` | `--version` | Print version information and exit | - |
 
-    @Argument(alias = "nt", description = "Number of Threads for NS lookups (6 by default)")
-    private static int numThreadsNSLookup = 12;
+Examples
+--------
+```bash
+# Start with custom resolver and HTTP enabled
+java -jar nsrrsetd-2.0-jar-with-dependencies.jar -r 8.8.8.8 -he
 
-    @Argument(alias = "at", description = "Number of Threads for A lookups (12 by default)")
-    private static int numThreadsALookup = 50;
+# Start with custom AXFR source and thread settings
+java -jar nsrrsetd-2.0-jar-with-dependencies.jar -s iad.xfr.dns.icann.org -nt 6 -at 25
 
-    @Argument(alias = "aaaat", description = "Number of Threads for AAAA lookups (12 by default, 0 for disable)")
-    private static int numThreadsAAAALookup = 50;
-
-    @Argument(alias = "dnst", description = "Number of Threads for DNS Check (50 default, 0 for disable))")
-    private static int numThreadsDNSCheck = 100;
-
-    @Argument(alias = "t", description = "resolver timeout (4 seconds default)")
-    private static int timeout = 4;
-
-    @Argument(alias = "a", description = "retransfer root zone after n seconds (86400 default)")
-    private static int rootZoneMaxAge = 86400;
-
-    @Argument(alias = "bc", description = "background checking of NS/A/AAAA every n seconds (1200s default)")
-    private static int backgroundCheck = 1200;
-
-    @Argument(alias = "he", description = "http enabled (default true)")
-    private static boolean httpEnabled = true;
-
-    @Argument(alias = "hp", description = "http port (default 8989)")
-    private static int httpPort = 8989;
+# Disable AAAA lookups and DNS checks
+java -jar nsrrsetd-2.0-jar-with-dependencies.jar -aaaat 0 -dnst 0
 ```
 
 If you don't trust `ns-anyslv.ui-dns.com` you can use the `iad.xfr.dns.icann.org` as AXFR Source. See also icann.org website.
