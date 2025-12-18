@@ -25,13 +25,16 @@ package de.mieslinger.nsrrsetd.background;
 
 import de.mieslinger.nsrrsetd.store.LatencyStore;
 import de.mieslinger.nsrrsetd.transfer.QueryIpForZone;
+import java.io.InterruptedIOException;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.xbill.DNS.Cache;
 import org.xbill.DNS.DClass;
-import org.xbill.DNS.Lookup;
+import org.xbill.DNS.Flags;
+import org.xbill.DNS.Message;
+import org.xbill.DNS.Rcode;
+import org.xbill.DNS.Record;
 import org.xbill.DNS.SimpleResolver;
 import org.xbill.DNS.Type;
 
@@ -45,7 +48,6 @@ public class LookupZone implements Runnable {
     private final Logger logger = LoggerFactory.getLogger(LookupZone.class);
     private ConcurrentLinkedQueue<QueryIpForZone> queueDNSCheck;
     private LatencyStore s;
-    private Cache c;
 
     private LookupZone() {
         this.queueDNSCheck = queueDNSCheck;
@@ -55,8 +57,6 @@ public class LookupZone implements Runnable {
             LatencyStore s) {
         this.queueDNSCheck = queueDNSCheck;
         this.s = s;
-        this.c = new Cache();
-        c.setMaxEntries(0);
     }
 
     @Override
@@ -77,23 +77,36 @@ public class LookupZone implements Runnable {
 
     private void doLookup(QueryIpForZone n) throws Exception {
         logger.debug("Query NS Records for zone {} from server {}", n.getZone(), n.getIp());
-        Lookup la = new Lookup(n.getZone(), Type.NS, DClass.IN);
-        la.setCache(c);
-        SimpleResolver r = new SimpleResolver(n.getIp());
+
+        SimpleResolver r = new SimpleResolver(n.getIp().getHostAddress());
         r.setTimeout(Duration.ofSeconds(20));
-        la.setResolver(r);
+
+        Record question = Record.newRecord(n.getZone(), Type.NS, DClass.IN);
+        Message query = Message.newQuery(question);
+        query.getHeader().unsetFlag(Flags.RD); // Query authoritative server without recursion
+
         long begin = System.currentTimeMillis();
-        la.run();
+        Message response;
+
+        try {
+            response = r.send(query);
+        } catch (InterruptedIOException e) {
+            logger.info("Query for NS Records of zone {} from server {} timed out", n.getZone(), n.getIp());
+            return;
+        } catch (Exception e) {
+            logger.info("Query for NS Records of zone {} from server {} failed: {}", n.getZone(), n.getIp(), e.getMessage());
+            return;
+        }
+
         long end = System.currentTimeMillis();
         long latency = end - begin;
-        switch (la.getResult()) {
-            case Lookup.SUCCESSFUL:
-                logger.debug("Query for NS Records of zone {} from server {} took {}ms", n.getZone(), n.getIp(), latency);
-                s.storeLatency(n.getZone(), n.getIp(), latency, end);
-                break;
-            default:
-                logger.info("Query for NS Records of zone {} from server {} failed (Error: {})", n.getZone(), n.getIp(), la.getErrorString());
-                break;
+
+        int rcode = response.getHeader().getRcode();
+        if (rcode == Rcode.NOERROR) {
+            logger.debug("Query for NS Records of zone {} from server {} took {}ms", n.getZone(), n.getIp(), latency);
+            s.storeLatency(n.getZone(), n.getIp(), latency, end);
+        } else {
+            logger.info("Query for NS Records of zone {} from server {} failed (Rcode: {})", n.getZone(), n.getIp(), Rcode.string(rcode));
         }
     }
 }

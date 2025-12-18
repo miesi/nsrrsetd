@@ -44,6 +44,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xbill.DNS.Cache;
 import org.xbill.DNS.DClass;
+import org.xbill.DNS.Flags;
 import org.xbill.DNS.Message;
 import org.xbill.DNS.Name;
 import org.xbill.DNS.Rcode;
@@ -138,6 +139,7 @@ public class ServletGetDelegatingNSSet extends HttpServlet {
 
             Record question = Record.newRecord(zone, type, DClass.IN);
             Message query = Message.newQuery(question);
+            query.getHeader().unsetFlag(Flags.RD); // Query authoritative server without recursion
             Message dnsResponse;
             long begin = System.currentTimeMillis();
 
