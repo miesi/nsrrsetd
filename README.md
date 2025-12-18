@@ -14,15 +14,101 @@ Inspired by DNS Standheizung, this is a combined daemon to
 
 /getDelegatingNSSet/<String>
 ----------------------------
+Get the NS records delegated for a zone from the parent zone.
+
 `curl http://localhost:8989/getDelegatingNSSet/mieslinger.de`
 
-```
+```json
 {"queryTime":17,
  "status":"NOERROR",
  "rrSet":["ns-anyslv.ui-dns.biz","ns-anyslv.ui-dns.com","ns-anyslv.ui-dns.org","ns-anyslv.ui-dns.de"],
  "queriedServer":"194.146.107.6"
 }
 ```
+
+/checkDelegation (POST)
+-----------------------
+Check if a zone is properly delegated with the expected NS records. Returns detailed status and diagnostics.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8989/checkDelegation \
+  -H "Content-Type: application/json" \
+  -d '{
+    "zone": "mieslinger.de",
+    "nsRrSet": [
+      "ns-anyslv.ui-dns.biz",
+      "ns-anyslv.ui-dns.com",
+      "ns-anyslv.ui-dns.org",
+      "ns-anyslv.ui-dns.de"
+    ]
+  }'
+```
+
+**Response (Status: OK):**
+```json
+{
+  "queryTime": 23,
+  "queriedServer": "194.146.107.6",
+  "status": "OK",
+  "diagnosticMessage": null,
+  "actualNsRrSet": [
+    "ns-anyslv.ui-dns.biz.",
+    "ns-anyslv.ui-dns.com.",
+    "ns-anyslv.ui-dns.org.",
+    "ns-anyslv.ui-dns.de."
+  ],
+  "expectedNsRrSet": [
+    "ns-anyslv.ui-dns.biz.",
+    "ns-anyslv.ui-dns.com.",
+    "ns-anyslv.ui-dns.org.",
+    "ns-anyslv.ui-dns.de."
+  ]
+}
+```
+
+**Response (Status: NotDelegated):**
+```json
+{
+  "queryTime": 18,
+  "queriedServer": "194.146.107.6",
+  "status": "NotDelegated",
+  "diagnosticMessage": "Zone does not exist (NXDOMAIN)",
+  "actualNsRrSet": [],
+  "expectedNsRrSet": ["ns1.example.com.", "ns2.example.com."]
+}
+```
+
+**Response (Status: PartlyDelegated):**
+```json
+{
+  "queryTime": 25,
+  "queriedServer": "194.146.107.6",
+  "status": "PartlyDelegated",
+  "diagnosticMessage": "Delegation is missing NS records: [ns4.example.com.]",
+  "actualNsRrSet": ["ns1.example.com.", "ns2.example.com.", "ns3.example.com."],
+  "expectedNsRrSet": ["ns1.example.com.", "ns2.example.com.", "ns3.example.com.", "ns4.example.com."]
+}
+```
+
+**Response (Status: NotDelegatedToNsRrSet):**
+```json
+{
+  "queryTime": 21,
+  "queriedServer": "194.146.107.6",
+  "status": "NotDelegatedToNsRrSet",
+  "diagnosticMessage": "Delegation mismatch. Missing: [ns1.example.com., ns2.example.com.], Extra: [ns-old1.example.org., ns-old2.example.org.]",
+  "actualNsRrSet": ["ns-old1.example.org.", "ns-old2.example.org."],
+  "expectedNsRrSet": ["ns1.example.com.", "ns2.example.com."]
+}
+```
+
+**Status values:**
+- `OK`: Zone is delegated exactly as expected
+- `NotDelegated`: Zone does not exist (NXDOMAIN) or has no NS records
+- `PartlyDelegated`: Zone is delegated with some overlap - has missing and/or extra NS records
+- `NotDelegatedToNsRrSet`: Zone is delegated to completely different nameservers (no overlap at all)
+- `QueryFailed`: DNS query failed (timeout, network error, etc.)
 
 /status
 -------

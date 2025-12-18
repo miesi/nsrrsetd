@@ -28,6 +28,7 @@ import de.mieslinger.nsrrsetd.background.DelegationNSSetLookup;
 import de.mieslinger.nsrrsetd.background.LookupZone;
 import de.mieslinger.nsrrsetd.background.NSAAAALookup;
 import de.mieslinger.nsrrsetd.background.NSALookup;
+import de.mieslinger.nsrrsetd.servlets.ServletCheckDelegation;
 import de.mieslinger.nsrrsetd.servlets.ServletGetDelegatingNSSet;
 import de.mieslinger.nsrrsetd.servlets.ServletStatistics;
 import de.mieslinger.nsrrsetd.transfer.QueryIpForZone;
@@ -283,6 +284,7 @@ public class Main implements Runnable {
             context.addServlet(ServletStatus.class, "/status");
             context.addServlet(ServletStatistics.class, "/statistics");
             context.addServlet(ServletGetDelegatingNSSet.class, "/getDelegatingNSSet/*");
+            context.addServlet(ServletCheckDelegation.class, "/checkDelegation");
 
             jetty.start();
 
