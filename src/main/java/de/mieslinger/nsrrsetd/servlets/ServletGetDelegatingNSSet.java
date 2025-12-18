@@ -202,7 +202,7 @@ public class ServletGetDelegatingNSSet extends HttpServlet {
 
             Cache cache = new Cache();
             sr = cache.addMessage(dnsResponse);
-            if (sr.isSuccessful() || sr.isDelegation()) {
+            if (sr != null && (sr.isSuccessful() || sr.isDelegation())) {
                 qr.setNsServers(sr);
             }
 

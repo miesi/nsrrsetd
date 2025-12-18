@@ -39,7 +39,7 @@ public class QueryResult {
 
     private long queryTime;
     private String status; // NXDomain; Delegated; Error
-    private List<RRset> listRRset; // NULL if NXDomain or Error
+    private transient List<RRset> listRRset; // NULL if NXDomain or Error (excluded from JSON serialization)
     private List<String> rrSet = new LinkedList<String>();
     private String queriedServer;
     private String diagnostics;
