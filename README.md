@@ -333,8 +333,8 @@ See `/opt/nsrrsetd/docs/PORT80-SETUP.md` for alternative methods and troubleshoo
 | `-aaaat` | `--aaaa-threads` | Number of Threads for AAAA lookups (0 to disable) | 50 |
 | `-dnst` | `--dns-check-threads` | Number of Threads for DNS Check (0 to disable) | 100 |
 | `-t` | `--timeout` | Resolver timeout in seconds | 4 |
-| `-dt` | `--dns-timeout` | **NEW:** DNS query timeout in milliseconds | 2000 |
-| `-jt` | `--jetty-threads` | **NEW:** Jetty HTTP thread pool size | 200 |
+| `-dt` | `--dns-timeout` | DNS query timeout in milliseconds | 2000 |
+| `-jt` | `--jetty-threads` | Jetty HTTP thread pool size | 200 |
 | `-a` | `--root-zone-max-age` | Retransfer root zone after n seconds | 86400 |
 | `-bc` | `--background-check` | Background checking of NS/A/AAAA every n seconds | 1200 |
 | `-he` | `--http-enabled` | Enable HTTP server | false |
