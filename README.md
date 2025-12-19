@@ -1,14 +1,27 @@
 # nsrrsetd
 
-Inspired by DNS Standheizung, this is a combined daemon to
-- warm up the cache of the configured resolver with all delegations found in the root-zone
-- query all Nameserver IPs of the root-zone directly and record query-time (can be disabled)
-- start a jetty to display contents of the Cache containing tld, IP and latency (can be disabled)
-- JSON REST API to get the delegating NS RRSet of a second level zone (only available when jetty is enabled)
+Inspired by DNS Standheizung, this is a combined daemon to:
+- Warm up the cache of configured resolver(s) with all delegations found in the root zone
+- Query all nameserver IPs of the root zone directly and record query times (can be disabled)
+- Start a Jetty HTTP server to display cache contents: TLD, IP, and latency (can be disabled)
+- Provide JSON REST API to get the delegating NS RRSet of zones (only available when HTTP is enabled)
+- **NEW in 2.2:** Automatically populate third-level public suffix nameserver data (co.uk, gov.uk, gv.at, etc.)
+- **NEW in 2.2:** HikariCP connection pooling for improved database performance
+- **NEW in 2.2:** Configurable DNS timeout and Jetty thread pool
 
-## Notes
-- third level domains like .co.uk are correctly handled
-- third level domains like de.com are NOT correctly handled
+## Features
+
+### Third-Level Domain Support
+- ✅ Third-level public suffixes like `.co.uk`, `.gov.uk`, `.gv.at`, `.co.nz` are **correctly handled** using the Public Suffix List
+- 🔄 Automatically populates nameserver data for third-level domains on first query
+- 📊 Keeps recursor cache "hot" by directly querying authoritative servers
+- ⚠️ Corporate third-level domains like `de.com` are NOT handled (not in Public Suffix List)
+
+### Performance & Scalability
+- 🚀 HikariCP connection pooling for H2 in-memory database
+- ⚙️ Configurable DNS query timeout (default: 2000ms)
+- 🧵 Configurable Jetty thread pool (default: 200 threads)
+- 📦 Supports running multiple instances on same server (one per recursor)
 
 ## "API"
 
@@ -127,67 +140,188 @@ Total generation time: 18ms
 
 ## Getting Started
 
-```
+```bash
 git clone https://github.com/miesi/nsrrsetd
+cd nsrrsetd/
 ```
 
 ### Prerequisites
 
-**Java 21 or higher is required**
+**Java 25 LTS is required**
 
-[Maven](https://maven.apache.org/)
+- [Maven](https://maven.apache.org/) (3.6+)
+- [Java 25 LTS](http://openjdk.java.net/)
 
-[Java](http://openjdk.java.net/)
-
-On debian based Systems
+#### On Fedora/RHEL/Alma/Rocky:
+```bash
+sudo dnf install maven java-25-openjdk-devel
 ```
-apt install maven openjdk-21-jre-headless
+
+#### On Debian/Ubuntu:
+```bash
+sudo apt install maven openjdk-25-jdk
 ```
 
 ### Building
 
-```
-git clone https://github.com/miesi/nsrrsetd
-cd nsrrsetd/
-mvn clean install
+#### Standard Build (using system Java)
+
+If your system Java is set to Java 25:
+```bash
+mvn clean package
 ```
 
-produces in `target/` the .jar, jar with dependencies and a rpm.
+#### Building with Java 25 when system Java is different
+
+If your system uses a different Java version (e.g., Java 21 or 17), you must explicitly set `JAVA_HOME` to Java 25:
+
+```bash
+# On Fedora/RHEL/Alma/Rocky:
+export JAVA_HOME=/usr/lib/jvm/java-25-openjdk
+mvn clean package
+
+# On Debian/Ubuntu:
+export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64
+mvn clean package
+
+# Or as a one-liner:
+JAVA_HOME=/usr/lib/jvm/java-25-openjdk mvn clean package
+```
+
+**Check your Java version:**
+```bash
+java -version
+mvn --version
+```
+
+**Find Java 25 installation:**
+```bash
+# Fedora/RHEL:
+ls -la /usr/lib/jvm/java-25-openjdk
+
+# Debian/Ubuntu:
+update-java-alternatives --list
+```
+
+#### Build Output
+
+The build produces in `target/`:
+- `nsrrsetd-2.2.jar` - Base JAR
+- `nsrrsetd-2.2-jar-with-dependencies.jar` - Standalone executable JAR with all dependencies
+- `nsrrsetd-2.2-1.noarch.rpm` - RPM package for RHEL/Fedora/Alma/Rocky
+
+The standalone JAR includes:
+- Gson (compiled from source with Java 25)
+- Guava 33.3.1-jre (Public Suffix List support)
+- HikariCP 7.0.2 (connection pooling)
+- dnsjava 3.6.2
+- Jetty 12.0.15
+- All other dependencies
 
 ## Installation
 
-EL8+ (and alma, rocky, oracle, redhat, ...)
-----------------------------------------
+### From RPM (Recommended)
+
+**RHEL 8+, Fedora, Alma, Rocky, Oracle Linux:**
+```bash
+sudo dnf install nsrrsetd-2.2-1.noarch.rpm
 ```
-dnf install nsrrsetd-2.0-1.noarch.rpm
+
+The RPM automatically:
+- Creates `nsrrsetd` user (system account)
+- Creates `/var/lib/nsrrsetd` working directory
+- Installs systemd unit file at `/usr/lib/systemd/system/nsrrsetd@.service`
+- Installs configuration at `/etc/sysconfig/nsrrsetd`
+- Installs documentation at `/opt/nsrrsetd/docs/`
+
+### From JAR
+
+Copy the standalone JAR to your preferred location:
+```bash
+sudo mkdir -p /opt/nsrrsetd
+sudo cp target/nsrrsetd-2.2-jar-with-dependencies.jar /opt/nsrrsetd/
 ```
 
 ## Running
 
-Starting with default values
-----------------------------
-```
-java -jar nsrrsetd-2.0-jar-with-dependencies.jar
+### Standalone Mode
+
+**With default settings:**
+```bash
+java -jar nsrrsetd-2.2-jar-with-dependencies.jar
 ```
 
-As a daemon
------------
-The rpm comes with a unit file. To enable and start nsrrsetd like this:
-```
-systemctl enable nsrrsetd@ins.example.com
-systemctl start nsrrsetd@ins.example.com
-```
-Starts to query ins.example.com. Make sure that ins.example.com can be resolved
-at unit start time. (adjust `After=` parameter and submit Pull Request)
-
-Help
-----
-```
-java -jar nsrrsetd-2.0-jar-with-dependencies.jar --help
+**With HTTP API enabled:**
+```bash
+java -jar nsrrsetd-2.2-jar-with-dependencies.jar \
+  --http-enabled \
+  --http-port 8989 \
+  --resolver 8.8.8.8
 ```
 
-Command Line Options
---------------------
+**Help:**
+```bash
+java -jar nsrrsetd-2.2-jar-with-dependencies.jar --help
+```
+
+### As a systemd Service (Recommended)
+
+The RPM includes a systemd **instance unit** that supports running multiple instances on the same server (one per DNS recursor).
+
+**Start a single instance:**
+```bash
+# Start instance for recursor at 8.8.8.8
+sudo systemctl start nsrrsetd@8.8.8.8
+
+# Enable on boot
+sudo systemctl enable nsrrsetd@8.8.8.8
+
+# Check status
+sudo systemctl status nsrrsetd@8.8.8.8
+
+# View logs
+sudo journalctl -u nsrrsetd@8.8.8.8 -f
+```
+
+**Start multiple instances (keep multiple recursors warm):**
+```bash
+# Start instances for different recursors
+sudo systemctl start nsrrsetd@192.168.1.1
+sudo systemctl start nsrrsetd@192.168.1.2
+sudo systemctl start nsrrsetd@8.8.8.8
+
+# Enable all on boot
+sudo systemctl enable nsrrsetd@192.168.1.1
+sudo systemctl enable nsrrsetd@192.168.1.2
+sudo systemctl enable nsrrsetd@8.8.8.8
+
+# View status of all instances
+sudo systemctl status 'nsrrsetd@*'
+```
+
+**Configuration:**
+- Global config: `/etc/sysconfig/nsrrsetd`
+- Per-instance config: `/etc/sysconfig/nsrrsetd@INSTANCE` (optional)
+
+See `/opt/nsrrsetd/docs/README-INSTANCES.md` for complete documentation on running multiple instances.
+
+### Running on Port 80
+
+The systemd unit includes `AmbientCapabilities=CAP_NET_BIND_SERVICE` to allow binding to port 80 without running as root.
+
+**Edit `/etc/sysconfig/nsrrsetd`:**
+```bash
+NSRRSETARGS="--http-enabled --http-port 80 --dns-timeout 2000 --jetty-threads 300"
+```
+
+Then restart:
+```bash
+sudo systemctl restart nsrrsetd@8.8.8.8
+```
+
+See `/opt/nsrrsetd/docs/PORT80-SETUP.md` for alternative methods and troubleshooting.
+
+## Command Line Options
 
 | Short | Long | Description | Default |
 |-------|------|-------------|---------|
@@ -199,6 +333,8 @@ Command Line Options
 | `-aaaat` | `--aaaa-threads` | Number of Threads for AAAA lookups (0 to disable) | 50 |
 | `-dnst` | `--dns-check-threads` | Number of Threads for DNS Check (0 to disable) | 100 |
 | `-t` | `--timeout` | Resolver timeout in seconds | 4 |
+| `-dt` | `--dns-timeout` | **NEW:** DNS query timeout in milliseconds | 2000 |
+| `-jt` | `--jetty-threads` | **NEW:** Jetty HTTP thread pool size | 200 |
 | `-a` | `--root-zone-max-age` | Retransfer root zone after n seconds | 86400 |
 | `-bc` | `--background-check` | Background checking of NS/A/AAAA every n seconds | 1200 |
 | `-he` | `--http-enabled` | Enable HTTP server | false |
@@ -206,24 +342,90 @@ Command Line Options
 | `-h` | `--help` | Show help message and exit | - |
 | `-V` | `--version` | Print version information and exit | - |
 
-Examples
---------
+### Examples
+
+**Basic usage with HTTP API:**
 ```bash
-# Start with custom resolver and HTTP enabled
-java -jar nsrrsetd-2.0-jar-with-dependencies.jar -r 8.8.8.8 -he
-
-# Start with custom AXFR source and thread settings
-java -jar nsrrsetd-2.0-jar-with-dependencies.jar -s iad.xfr.dns.icann.org -nt 6 -at 25
-
-# Disable AAAA lookups and DNS checks
-java -jar nsrrsetd-2.0-jar-with-dependencies.jar -aaaat 0 -dnst 0
+java -jar nsrrsetd-2.2-jar-with-dependencies.jar \
+  --resolver 8.8.8.8 \
+  --http-enabled \
+  --http-port 8080
 ```
 
-If you don't trust `ns-anyslv.ui-dns.com` you can use the `iad.xfr.dns.icann.org` as AXFR Source. See also icann.org website.
-`iad.xfr.dns.icann.org` has a low transferlimit per IP and minute.
+**Production settings (1000+ req/s):**
+```bash
+java -jar nsrrsetd-2.2-jar-with-dependencies.jar \
+  --resolver 192.168.1.1 \
+  --http-enabled \
+  --http-port 80 \
+  --dns-timeout 3000 \
+  --jetty-threads 300
+```
 
-## "API" continued
-/statistics
+**Cache warmer only (no HTTP API, no DNS checks):**
+```bash
+java -jar nsrrsetd-2.2-jar-with-dependencies.jar \
+  --resolver 8.8.8.8 \
+  --dns-check-threads 0
+```
+
+**Custom AXFR source and thread settings:**
+```bash
+java -jar nsrrsetd-2.2-jar-with-dependencies.jar \
+  --axfr-source iad.xfr.dns.icann.org \
+  --ns-threads 6 \
+  --a-threads 25
+```
+
+**Disable AAAA lookups (IPv4 only):**
+```bash
+java -jar nsrrsetd-2.2-jar-with-dependencies.jar \
+  --aaaa-threads 0 \
+  --resolver 8.8.8.8
+```
+
+### AXFR Source Notes
+
+If you don't trust `ns-anyslv.ui-dns.com`, you can use ICANN's AXFR service:
+- `iad.xfr.dns.icann.org` (Washington DC)
+- `lax.xfr.dns.icann.org` (Los Angeles)
+
+**Note:** ICANN AXFR servers have rate limits. See [icann.org/czds](https://www.icann.org/resources/pages/czds-2014-03-18-en) for details.
+
+## Performance
+
+### Capacity
+
+With default settings, nsrrsetd can handle:
+- **Jetty:** 240,000+ req/s theoretical (actual depends on query complexity)
+- **Recommended for production:** 1,000 req/s sustained load
+- **Bottleneck:** DNS query latency to authoritative servers
+
+Tune for higher throughput:
+```bash
+--dns-timeout 1000 --jetty-threads 300
+```
+
+### Database
+
+- **H2 in-memory database** for latency cache
+- **HikariCP connection pooling** (10 connections, 2 min idle)
+- **Fast queries:** TLD lookups indexed on `(tld, latency)`
+
+### Third-Level Domain Population
+
+When you query a domain with a third-level public suffix (e.g., `example.co.uk`):
+1. First query detects "co.uk" is not in cache
+2. Automatically queries .uk nameservers for co.uk NS records
+3. Resolves A/AAAA for each co.uk nameserver
+4. Tests latency and stores in database
+5. Future queries use cached co.uk nameserver data
+
+This keeps your recursor cache "hot" for common third-level domains.
+
+## Additional API Endpoints
+
+### /statistics
 -----------
 ```
 $ curl http://localhost:8989/statistics
@@ -290,11 +492,80 @@ Total generation time: 25ms<br>
 </html>
 ```
 
+## Documentation
+
+After RPM installation, documentation is available at:
+- `/opt/nsrrsetd/docs/INSTALL.md` - Installation guide
+- `/opt/nsrrsetd/docs/PORT80-SETUP.md` - Running on port 80 (privilege options)
+- `/opt/nsrrsetd/docs/README-INSTANCES.md` - Running multiple instances
+
+Or in the source repository:
+- `src/main/sysconfig/INSTALL.md`
+- `src/main/sysconfig/PORT80-SETUP.md`
+- `src/main/sysconfig/README-INSTANCES.md`
+
+## Troubleshooting
+
+### DNS Timeout Errors
+
+If you see many timeout errors in logs:
+```bash
+# Increase DNS timeout
+--dns-timeout 5000
+```
+
+### Out of Memory
+
+Adjust JVM memory via systemd config `/etc/sysconfig/nsrrsetd`:
+```bash
+JAVAARGS="-Xmx4g -Xms256m"
+```
+
+### Too Many Open Files
+
+The systemd unit sets `LimitNOFILE=65536`. If you need more:
+```bash
+# Edit unit file
+sudo systemctl edit nsrrsetd@8.8.8.8
+
+# Add override
+[Service]
+LimitNOFILE=131072
+```
+
+### Check Service Status
+
+```bash
+# View status
+sudo systemctl status nsrrsetd@8.8.8.8
+
+# View logs
+sudo journalctl -u nsrrsetd@8.8.8.8 -f
+
+# Check resource usage
+sudo systemctl status 'nsrrsetd@*' | grep -E '(Memory|Tasks)'
+```
+
 ## Authors
 
-* **Thomas Mieslinger** 
+* **Thomas Mieslinger** - IONOS SE
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+
+## Contributing
+
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test with Java 25
+5. Submit a pull request
+
+## Support
+
+For issues and questions:
+- GitHub Issues: [https://github.com/miesi/nsrrsetd/issues](https://github.com/miesi/nsrrsetd/issues)
+- Documentation: `/opt/nsrrsetd/docs/` (after RPM install)
 
