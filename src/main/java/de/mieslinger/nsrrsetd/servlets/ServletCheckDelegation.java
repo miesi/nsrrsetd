@@ -24,9 +24,11 @@
 package de.mieslinger.nsrrsetd.servlets;
 
 import com.google.gson.Gson;
+import com.google.common.net.InternetDomainName;
 import de.mieslinger.nsrrsetd.Main;
 import de.mieslinger.nsrrsetd.transfer.DelegationCheckRequest;
 import de.mieslinger.nsrrsetd.transfer.DelegationCheckResponse;
+import de.mieslinger.nsrrsetd.util.PublicSuffixPopulator;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -90,11 +92,29 @@ public class ServletCheckDelegation extends HttpServlet {
                 return;
             }
 
-            // Normalize zone name
+            // Normalize zone name and extract TLD using Public Suffix List
             String zoneStr = req.getZone();
-            Name zone = new Name(zoneStr.endsWith(".") ? zoneStr : zoneStr + ".");
-            int numLabels = zone.labels();
-            String tld = zone.getLabelString(numLabels - 2);
+            if (zoneStr.endsWith(".")) {
+                zoneStr = zoneStr.substring(0, zoneStr.length() - 1);
+            }
+
+            Name zone = new Name(zoneStr + ".");
+            String tld;
+
+            try {
+                InternetDomainName domain = InternetDomainName.from(zoneStr);
+                if (domain.hasPublicSuffix()) {
+                    tld = domain.publicSuffix().toString();
+                } else {
+                    // Fallback to old behavior if no public suffix found
+                    int numLabels = zone.labels();
+                    tld = zone.getLabelString(numLabels - 2);
+                }
+            } catch (IllegalArgumentException e) {
+                // Fallback to old behavior if domain parsing fails
+                int numLabels = zone.labels();
+                tld = zone.getLabelString(numLabels - 2);
+            }
 
             // Normalize expected NS names
             Set<String> expectedNsSet = new HashSet<>();
@@ -110,30 +130,65 @@ public class ServletCheckDelegation extends HttpServlet {
             resp.setExpectedNsRrSet(new ArrayList<>(expectedNsSet));
 
             // Find fastest server for TLD
+            // For third-level public suffixes (co.uk, gov.uk), try the suffix first,
+            // then fall back to parent TLD (uk) if not found in root zone
             Connection c = Main.getDbConn();
             String bestIP = null;
+            String queryTld = tld;
+
             PreparedStatement st = c.prepareStatement(
                 "select ip from serverLatency where tld = ? order by latency limit 1"
             );
-            st.setString(1, tld);
+            st.setString(1, queryTld);
             ResultSet rs = st.executeQuery();
             if (rs.next()) {
                 bestIP = rs.getString(1);
                 resp.setQueriedServer(bestIP);
             }
+
+            // If no server found for public suffix, try to populate it from parent TLD
+            if (bestIP == null && queryTld.contains(".")) {
+                String parentTld = queryTld.substring(queryTld.indexOf('.') + 1);
+                logger.info("Public suffix {} not in cache, attempting to populate from parent TLD {}", queryTld, parentTld);
+
+                // Try to dynamically populate the public suffix data
+                if (PublicSuffixPopulator.populatePublicSuffix(queryTld, parentTld)) {
+                    // Retry query after population
+                    st.setString(1, queryTld);
+                    rs = st.executeQuery();
+                    if (rs.next()) {
+                        bestIP = rs.getString(1);
+                        resp.setQueriedServer(bestIP);
+                        logger.info("Successfully populated and using public suffix: {}", queryTld);
+                    }
+                }
+
+                // If still no server, fall back to parent TLD
+                if (bestIP == null) {
+                    st.setString(1, parentTld);
+                    rs = st.executeQuery();
+                    if (rs.next()) {
+                        bestIP = rs.getString(1);
+                        resp.setQueriedServer(bestIP);
+                        queryTld = parentTld;
+                        logger.debug("Falling back to parent TLD {} instead of {} (population failed)", parentTld, tld);
+                    }
+                }
+            }
+
             rs.close();
             st.close();
 
             if (bestIP == null) {
                 resp.setStatus("QueryFailed");
-                resp.setDiagnosticMessage("No known authoritative server for TLD: " + tld);
+                resp.setDiagnosticMessage("No known authoritative server for TLD: " + tld + " or parent TLDs");
                 out.println(gson.toJson(resp));
                 return;
             }
 
             // Query authoritative server
             SimpleResolver resolver = new SimpleResolver(bestIP);
-            resolver.setTimeout(Duration.ofSeconds(20));
+            resolver.setTimeout(Duration.ofMillis(Main.getDnsTimeoutMillis()));
 
             Record question = Record.newRecord(zone, Type.NS, DClass.IN);
             Message query = Message.newQuery(question);

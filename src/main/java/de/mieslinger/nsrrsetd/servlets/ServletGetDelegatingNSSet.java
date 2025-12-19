@@ -24,8 +24,10 @@
 package de.mieslinger.nsrrsetd.servlets;
 
 import com.google.gson.Gson;
+import com.google.common.net.InternetDomainName;
 import de.mieslinger.nsrrsetd.Main;
 import de.mieslinger.nsrrsetd.transfer.QueryResult;
+import de.mieslinger.nsrrsetd.util.PublicSuffixPopulator;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.PrintWriter;
@@ -89,6 +91,9 @@ public class ServletGetDelegatingNSSet extends HttpServlet {
             String zoneStr = request.getPathInfo().substring(1);
             logger.debug("zoneStr: {}", zoneStr);
 
+            // Remove trailing dot if present for PSL lookup
+            String zoneStrNoDot = zoneStr.endsWith(".") ? zoneStr.substring(0, zoneStr.length() - 1) : zoneStr;
+
             Name zone = new Name(zoneStr);
             if (!zone.isAbsolute()) {
                 zone = new Name(zoneStr + ".");
@@ -99,23 +104,38 @@ public class ServletGetDelegatingNSSet extends HttpServlet {
             int numLabels = zone.labels();
             logger.debug("numLabels: {}", numLabels);
 
-            /*for (int i = 0; i <= numLabels; i++) {
-                logger.debug("label({}): {}", i, zone.getLabelString(i));
-            }*/
-            String tld = zone.getLabelString(numLabels - 2);
+            // Extract TLD using Public Suffix List
+            String tld;
+            try {
+                InternetDomainName domain = InternetDomainName.from(zoneStrNoDot);
+                if (domain.hasPublicSuffix()) {
+                    tld = domain.publicSuffix().toString();
+                } else {
+                    // Fallback to old behavior if no public suffix found
+                    tld = zone.getLabelString(numLabels - 2);
+                }
+            } catch (IllegalArgumentException e) {
+                // Fallback to old behavior if domain parsing fails
+                tld = zone.getLabelString(numLabels - 2);
+            }
 
             logger.debug("TLD: {}", tld);
 
             TreeMap<Long, String[]> servers = new TreeMap<Long, String[]>();
 
+            // Try to find servers for the public suffix (e.g., co.uk)
+            // If not found (not in root zone), use parent TLD (e.g., uk)
+            String queryTld = tld;
             PreparedStatement st = c.prepareStatement("select tld, ip, latency"
                     + " from serverLatency"
                     + " where tld = ?"
                     + " order by latency");
-            st.setString(1, tld);
+            st.setString(1, queryTld);
             ResultSet rs = st.executeQuery();
             int i = 1;
+            boolean foundServers = false;
             while (rs.next()) {
+                foundServers = true;
                 if (i == 1) {
                     bestIP = rs.getString(2);
                     qr.setQueriedServer(bestIP);
@@ -128,12 +148,64 @@ public class ServletGetDelegatingNSSet extends HttpServlet {
                 servers.put(l, server);
                 i++;
             }
+
+            // If no servers found for public suffix, try to populate it from parent TLD
+            if (!foundServers && queryTld.contains(".")) {
+                String parentTld = queryTld.substring(queryTld.indexOf('.') + 1);
+                logger.info("Public suffix {} not in cache, attempting to populate from parent TLD {}", queryTld, parentTld);
+
+                // Try to dynamically populate the public suffix data
+                if (PublicSuffixPopulator.populatePublicSuffix(queryTld, parentTld)) {
+                    // Retry query after population
+                    st.setString(1, queryTld);
+                    rs = st.executeQuery();
+                    while (rs.next()) {
+                        foundServers = true;
+                        if (i == 1) {
+                            bestIP = rs.getString(2);
+                            qr.setQueriedServer(bestIP);
+                        }
+                        String[] server = new String[3];
+                        server[0] = rs.getString(1);
+                        server[1] = rs.getString(2);
+                        Long l = rs.getLong(3);
+                        server[2] = l.toString();
+                        servers.put(l, server);
+                        i++;
+                    }
+                    if (foundServers) {
+                        logger.info("Successfully populated and using public suffix: {}", queryTld);
+                    }
+                }
+
+                // If still no servers, fall back to parent TLD
+                if (!foundServers) {
+                    st.setString(1, parentTld);
+                    rs = st.executeQuery();
+                    while (rs.next()) {
+                        if (i == 1) {
+                            bestIP = rs.getString(2);
+                            qr.setQueriedServer(bestIP);
+                        }
+                        String[] server = new String[3];
+                        server[0] = rs.getString(1);
+                        server[1] = rs.getString(2);
+                        Long l = rs.getLong(3);
+                        server[2] = l.toString();
+                        servers.put(l, server);
+                        i++;
+                    }
+                    queryTld = parentTld;
+                    logger.debug("Falling back to parent TLD {} instead of {} (population failed)", parentTld, tld);
+                }
+            }
+
             rs.close();
             st.close();
             logger.debug("BestIP: {}", bestIP);
 
             SimpleResolver r = new SimpleResolver(bestIP);
-            r.setTimeout(Duration.ofSeconds(20));
+            r.setTimeout(Duration.ofMillis(Main.getDnsTimeoutMillis()));
 
             int type = Type.NS;
 

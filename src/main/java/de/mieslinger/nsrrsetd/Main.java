@@ -44,12 +44,15 @@ import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xbill.DNS.Name;
 import org.xbill.DNS.Record;
 import org.xbill.DNS.Type;
 import org.xbill.DNS.ZoneTransferIn;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 
 /**
  *
@@ -83,6 +86,9 @@ public class Main implements Runnable {
     @Option(names = {"-t", "--timeout"}, description = "resolver timeout in seconds (default: ${DEFAULT-VALUE})")
     private static int numTimeout = 4;
 
+    @Option(names = {"-dt", "--dns-timeout"}, description = "DNS query timeout in milliseconds (default: ${DEFAULT-VALUE})")
+    private static int dnsTimeoutMillis = 2000;
+
     @Option(names = {"-a", "--root-zone-max-age"}, description = "retransfer root zone after n seconds (default: ${DEFAULT-VALUE})")
     private static int strRootZoneMaxAge = 86400;
 
@@ -99,6 +105,9 @@ public class Main implements Runnable {
     @Option(names = {"-hp", "--http-port"}, description = "http port (default: ${DEFAULT-VALUE})")
     private static int numHttpPort = 8989;
 
+    @Option(names = {"-jt", "--jetty-threads"}, description = "Jetty thread pool size (default: ${DEFAULT-VALUE})")
+    private static int jettyThreads = 200;
+
     private static final ConcurrentLinkedQueue<Record> queueDelegation = new ConcurrentLinkedQueue<>();
     private static final ConcurrentLinkedQueue<QueryNsForIP> queueALookup = new ConcurrentLinkedQueue<>();
     private static final ConcurrentLinkedQueue<QueryNsForIP> queueAAAALookup = new ConcurrentLinkedQueue<>();
@@ -109,6 +118,7 @@ public class Main implements Runnable {
     private static Logger logger = LoggerFactory.getLogger(Main.class);
     private static final String jdbcUrl = "jdbc:h2:mem:myDB;DB_CLOSE_DELAY=-1";
     private static Connection dbConn;
+    private static HikariDataSource dataSource;
     private static LatencyStore s;
     private static long lastTransfer = 0;
     private static Server jetty;
@@ -263,7 +273,18 @@ public class Main implements Runnable {
 
     private static void setupDB() {
         try {
-            dbConn = DriverManager.getConnection(jdbcUrl, "sa", "sa");
+            HikariConfig config = new HikariConfig();
+            config.setJdbcUrl(jdbcUrl);
+            config.setUsername("sa");
+            config.setPassword("sa");
+            config.setMaximumPoolSize(10);
+            config.setMinimumIdle(2);
+            config.setConnectionTimeout(30000);
+            config.setIdleTimeout(600000);
+            config.setMaxLifetime(1800000);
+
+            dataSource = new HikariDataSource(config);
+            dbConn = dataSource.getConnection();
             s = new LatencyStore(dbConn);
         } catch (Exception e) {
             logger.error("failed to connect {} exception: {}", jdbcUrl, e.getMessage());
@@ -273,7 +294,15 @@ public class Main implements Runnable {
 
     private static void startJetty() {
         try {
-            jetty = new Server(numHttpPort);
+            QueuedThreadPool threadPool = new QueuedThreadPool();
+            threadPool.setMaxThreads(jettyThreads);
+            threadPool.setMinThreads(8);
+            threadPool.setIdleTimeout(60000);
+
+            jetty = new Server(threadPool);
+            org.eclipse.jetty.server.ServerConnector connector = new org.eclipse.jetty.server.ServerConnector(jetty);
+            connector.setPort(numHttpPort);
+            jetty.addConnector(connector);
 
             ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
             context.setContextPath("/");
@@ -339,5 +368,13 @@ public class Main implements Runnable {
 
     public static boolean tldCacheComplete() {
         return tldCacheComplete;
+    }
+
+    public static int getDnsTimeoutMillis() {
+        return dnsTimeoutMillis;
+    }
+
+    public static HikariDataSource getDataSource() {
+        return dataSource;
     }
 }

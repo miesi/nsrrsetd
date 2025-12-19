@@ -23,6 +23,7 @@
  */
 package de.mieslinger.nsrrsetd.background;
 
+import de.mieslinger.nsrrsetd.Main;
 import de.mieslinger.nsrrsetd.store.LatencyStore;
 import de.mieslinger.nsrrsetd.transfer.QueryIpForZone;
 import java.io.InterruptedIOException;
@@ -79,7 +80,7 @@ public class LookupZone implements Runnable {
         logger.debug("Query NS Records for zone {} from server {}", n.getZone(), n.getIp());
 
         SimpleResolver r = new SimpleResolver(n.getIp().getHostAddress());
-        r.setTimeout(Duration.ofSeconds(20));
+        r.setTimeout(Duration.ofMillis(Main.getDnsTimeoutMillis()));
 
         Record question = Record.newRecord(n.getZone(), Type.NS, DClass.IN);
         Message query = Message.newQuery(question);
