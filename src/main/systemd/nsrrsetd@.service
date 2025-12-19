@@ -1,25 +1,60 @@
 [Unit]
-Description=DNS Cache Warmer for Instance %i
+Description=NS RRSet Daemon - DNS Cache Warmer for Recursor %i
+Documentation=https://github.com/yourusername/nsrrsetd
 After=network-online.target
-#After=network.target
-#After=mariadb@%i.service
-#After=mariadb-upgrade@%i.service
-#After=mariadb-init@%i.service
-#BindsTo=mariadb@%i.service
-#BindsTo=mariadb-upgrade@%i.service
-#BindsTo=mariadb-init@%i.service
+Wants=network-online.target
 
 [Service]
-#run as user nobody
 Type=simple
-Restart=always
-RestartSec=5
-StartLimitInterval=200
-StartLimitBurst=5
-LimitNOFILE=40000
+User=nsrrsetd
+Group=nsrrsetd
+
+# Allow binding to privileged ports (port 80, 443, etc.)
+# Only needed if HTTP API is enabled on port <1024
+# Requires systemd v229 or later
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Working directory
+WorkingDirectory=/var/lib/nsrrsetd
+
+# Environment from sysconfig
 EnvironmentFile=-/etc/sysconfig/nsrrsetd
+
+# Executable - %i is the instance name (typically recursor IP)
 ExecStart=/usr/bin/java $JAVAARGS -jar /opt/nsrrsetd/nsrrsetd.jar -r %i $NSRRSETARGS
-ProtectSystem=full
-ProtectHome=true
-PrivateDevices=true
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Resource limits
+LimitNOFILE=65536
+TasksMax=4096
+
+# Security hardening
+NoNewPrivileges=true
 PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nsrrsetd
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+PrivateDevices=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nsrrsetd@%i
+
+[Install]
+WantedBy=multi-user.target

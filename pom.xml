@@ -213,9 +213,62 @@
                             <!--<changelogFile>src/changelog</changelogFile>-->
                             <requires>
                                 <require>java-headless &gt;= 25</require>
+                                <require>systemd</require>
                             </requires>
 
+                            <!-- Pre-install: Create user and directories -->
+                            <preinstallScriptlet>
+                                <script>
+# Create nsrrsetd user if it doesn't exist
+if ! getent passwd nsrrsetd &gt;/dev/null; then
+    useradd -r -s /bin/false -d /var/lib/nsrrsetd -c "NS RRSet Daemon" nsrrsetd
+fi
+
+# Create working directory
+if [ ! -d /var/lib/nsrrsetd ]; then
+    mkdir -p /var/lib/nsrrsetd
+    chown nsrrsetd:nsrrsetd /var/lib/nsrrsetd
+    chmod 750 /var/lib/nsrrsetd
+fi
+                                </script>
+                            </preinstallScriptlet>
+
+                            <!-- Post-install: Reload systemd -->
+                            <postinstallScriptlet>
+                                <script>
+# Reload systemd daemon to pick up new unit file
+systemctl daemon-reload || true
+
+# Print usage information
+echo "========================================="
+echo "nsrrsetd installed successfully!"
+echo ""
+echo "To start an instance for a DNS recursor:"
+echo "  systemctl start nsrrsetd@RECURSOR_IP"
+echo ""
+echo "Examples:"
+echo "  systemctl start nsrrsetd@8.8.8.8"
+echo "  systemctl start nsrrsetd@192.168.1.1"
+echo ""
+echo "Enable on boot:"
+echo "  systemctl enable nsrrsetd@8.8.8.8"
+echo ""
+echo "Configuration: /etc/sysconfig/nsrrsetd"
+echo "Documentation: /opt/nsrrsetd/docs/"
+echo "========================================="
+                                </script>
+                            </postinstallScriptlet>
+
+                            <!-- Post-uninstall: Cleanup systemd -->
+                            <postremoveScriptlet>
+                                <script>
+# Reload systemd daemon after unit file removal
+systemctl daemon-reload || true
+                                </script>
+                            </postremoveScriptlet>
+
                             <entries>
+                                <!-- Systemd unit file -->
                                 <entry>
                                     <name>/usr/lib/systemd/system/nsrrsetd@.service</name>
                                     <file>src/main/systemd/nsrrsetd@.service</file>
@@ -223,21 +276,60 @@
                                     <group>root</group>
                                     <mode>0444</mode>
                                 </entry>
+
+                                <!-- Sysconfig file (user-editable) -->
                                 <entry>
                                     <name>/etc/sysconfig/nsrrsetd</name>
                                     <file>src/main/sysconfig/nsrrsetd</file>
                                     <user>root</user>
                                     <group>root</group>
-                                    <mode>0444</mode>
-                                    <configuration>true</configuration>
+                                    <mode>0644</mode>
+                                    <configuration>noreplace</configuration>
                                 </entry>
+
+                                <!-- Application JAR -->
                                 <entry>
                                     <name>/opt/nsrrsetd/nsrrsetd.jar</name>
                                     <file>target/nsrrsetd-${project.version}-jar-with-dependencies.jar</file>
                                     <user>root</user>
                                     <group>root</group>
                                     <mode>0444</mode>
-                                </entry>                
+                                </entry>
+
+                                <!-- Documentation -->
+                                <entry>
+                                    <name>/opt/nsrrsetd/docs/INSTALL.md</name>
+                                    <file>src/main/sysconfig/INSTALL.md</file>
+                                    <user>root</user>
+                                    <group>root</group>
+                                    <mode>0444</mode>
+                                    <documentation>true</documentation>
+                                </entry>
+                                <entry>
+                                    <name>/opt/nsrrsetd/docs/PORT80-SETUP.md</name>
+                                    <file>src/main/sysconfig/PORT80-SETUP.md</file>
+                                    <user>root</user>
+                                    <group>root</group>
+                                    <mode>0444</mode>
+                                    <documentation>true</documentation>
+                                </entry>
+                                <entry>
+                                    <name>/opt/nsrrsetd/docs/README-INSTANCES.md</name>
+                                    <file>src/main/sysconfig/README-INSTANCES.md</file>
+                                    <user>root</user>
+                                    <group>root</group>
+                                    <mode>0444</mode>
+                                    <documentation>true</documentation>
+                                </entry>
+
+                                <!-- Working directory (owned by nsrrsetd user) -->
+                                <entry>
+                                    <name>/var/lib/nsrrsetd</name>
+                                    <directory>true</directory>
+                                    <user>nsrrsetd</user>
+                                    <group>nsrrsetd</group>
+                                    <mode>0750</mode>
+                                </entry>
                             </entries>
                         </configuration>
                     </execution>

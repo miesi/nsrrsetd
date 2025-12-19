@@ -1,10 +1,38 @@
 # Default settings for nsrrsetd
-# 
+# This file is sourced by all nsrrsetd@INSTANCE.service instances
 #
-# JAVAARGS go before `-jar ...`
+# Each instance is started with: systemctl start nsrrsetd@RESOLVER_IP
+# Example: systemctl start nsrrsetd@8.8.8.8
+#          systemctl start nsrrsetd@192.168.1.1
+
+# JAVAARGS - JVM arguments (go before `-jar ...`)
+# Enable debug logging:
 # JAVAARGS="-Dorg.slf4j.simpleLogger.defaultLogLevel=debug"
+#
+# Production settings with Shenandoah GC:
 JAVAARGS="-XX:+UseShenandoahGC -Xmx2g -Xms32m -XX:+UnlockExperimentalVMOptions -XX:ShenandoahUncommitDelay=5000 -XX:ShenandoahGuaranteedGCInterval=50000"
 
-# http interface is disabled by default
-# Do not test individual tld nameserver performance
-NSRRSETARGS="-dnst 0"
+# NSRRSETARGS - Application arguments
+# Note: The resolver (-r) is automatically set to the instance name (systemd %i)
+#
+# Common options:
+#   --http-enabled              Enable HTTP API (default: disabled)
+#   --http-port PORT            HTTP port (default: 8989, use 80 for production)
+#   --dns-timeout MS            DNS query timeout in milliseconds (default: 2000)
+#   --jetty-threads N           Jetty thread pool size (default: 200)
+#   --root-zone-max-age SEC     Root zone refresh interval (default: 86400)
+#   --dns-check-threads N       DNS check threads (default: 100, 0 to disable)
+#
+# Example 1: Cache warmer only (no HTTP API)
+NSRRSETARGS="--dns-check-threads 0"
+
+# Example 2: HTTP API on port 8080
+# NSRRSETARGS="--http-enabled --http-port 8080 --dns-timeout 3000 --jetty-threads 200"
+
+# Example 3: HTTP API on port 80 (requires AmbientCapabilities in systemd unit)
+# NSRRSETARGS="--http-enabled --http-port 80 --dns-timeout 2000 --jetty-threads 300"
+
+# Example 4: Multiple recursors with different ports
+# For nsrrsetd@8.8.8.8: NSRRSETARGS="--http-enabled --http-port 8080"
+# For nsrrsetd@1.1.1.1: NSRRSETARGS="--http-enabled --http-port 8081"
+# Note: For per-instance config, create /etc/sysconfig/nsrrsetd@INSTANCE files
