@@ -4,7 +4,7 @@
   <groupId>de.mieslinger</groupId>
   <artifactId>nsrrsetd</artifactId>
   <name>NS RRset Daemon</name>
-  <version>2.1</version>
+  <version>2.2</version>
   <description>Inspired by DNS Standheizung, this is a combined daemon to
         - warm up the cache of the configured resolver with all delegations found in the root-zone
         - query all Nameserver IPs of the root-zone directly and record query-time (can be disabled)
