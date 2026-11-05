@@ -212,10 +212,11 @@ The build produces in `target/`:
 
 The standalone JAR includes:
 - Gson (compiled from source with Java 25)
-- Guava 33.3.1-jre (Public Suffix List support)
-- HikariCP 7.0.2 (connection pooling)
-- dnsjava 3.6.2
-- Jetty 12.0.15
+- Guava 33.8.0-jre (Public Suffix List support)
+- HikariCP 7.1.0 (connection pooling)
+- dnsjava 3.7.1
+- Jetty 12.1.14
+- H2 2.5.252 (in-memory latency store)
 - All other dependencies
 
 ## Installation

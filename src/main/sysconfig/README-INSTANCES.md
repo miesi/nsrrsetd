@@ -140,7 +140,7 @@ The instance name (`%i`) is available in the unit file as a variable:
 
 Current unit file uses:
 ```ini
-ExecStart=/usr/bin/java $JAVAARGS -jar /opt/nsrrsetd/nsrrsetd.jar -r %i $NSRRSETARGS
+ExecStart=/usr/lib/jvm/jre-25/bin/java $JAVAARGS -jar /opt/nsrrsetd/nsrrsetd.jar -r %i $NSRRSETARGS
 SyslogIdentifier=nsrrsetd@%i
 WorkingDirectory=/var/lib/nsrrsetd
 ```
@@ -201,7 +201,7 @@ sudo journalctl -u nsrrsetd@8.8.8.8 -n 100
 sudo systemd-analyze verify /usr/lib/systemd/system/nsrrsetd@.service
 
 # Run manually to see errors
-sudo -u nsrrsetd /usr/bin/java -jar /opt/nsrrsetd/nsrrsetd.jar -r 8.8.8.8
+sudo -u nsrrsetd /usr/lib/jvm/jre-25/bin/java -jar /opt/nsrrsetd/nsrrsetd.jar -r 8.8.8.8
 ```
 
 **Port conflicts:**

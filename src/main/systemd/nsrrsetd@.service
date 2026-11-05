@@ -21,7 +21,9 @@ WorkingDirectory=/var/lib/nsrrsetd
 EnvironmentFile=-/etc/sysconfig/nsrrsetd
 
 # Executable - %i is the instance name (typically recursor IP)
-ExecStart=/usr/bin/java $JAVAARGS -jar /opt/nsrrsetd/nsrrsetd.jar -r %i $NSRRSETARGS
+# Explicit JRE 25 path: on EL9 every java-N-openjdk has alternatives priority 1,
+# so /usr/bin/java keeps pointing at an older JDK when one is installed.
+ExecStart=/usr/lib/jvm/jre-25/bin/java $JAVAARGS -jar /opt/nsrrsetd/nsrrsetd.jar -r %i $NSRRSETARGS
 
 # Restart policy
 Restart=on-failure

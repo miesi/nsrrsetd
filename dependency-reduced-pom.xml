@@ -213,12 +213,6 @@ systemctl daemon-reload || true</script>
       </plugin>
     </plugins>
   </build>
-  <repositories>
-    <repository>
-      <id>repo2_maven_org</id>
-      <url>http://repo2.maven.org/maven2</url>
-    </repository>
-  </repositories>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.target>25</maven.compiler.target>
